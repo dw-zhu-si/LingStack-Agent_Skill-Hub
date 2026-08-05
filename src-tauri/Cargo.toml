@@ -1,0 +1,34 @@
+[package]
+name = "agent-skill-hub"
+version = "0.11.0"
+description = "灵栈：本地优先、可追溯的 Agent 与 Skill 管理器"
+authors = ["Lingzhan Contributors"]
+edition = "2021"
+
+[features]
+default = ["public-release"]
+public-release = []
+
+[lib]
+name = "agent_skill_hub_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+wait-timeout = "0.2"
+walkdir = "2"
+zip = { version = "4", default-features = false, features = ["deflate"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3"

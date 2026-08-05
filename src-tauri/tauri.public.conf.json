@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "app.lingzhan.agent-skill-hub",
+  "version": "0.11.0",
+  "bundle": {
+    "shortDescription": "不内置任何 Agent 或 Skill 的本地资产管理器",
+    "longDescription": "发行包以空资产库启动；只在用户手动刷新后扫描当前设备显式工具入口，不上传、不执行、不自动验证。"
+  }
+}

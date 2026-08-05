@@ -1,0 +1,33 @@
+{
+  "name": "agent-skill-hub",
+  "private": true,
+  "version": "0.11.0",
+  "type": "module",
+  "description": "LingStack: a local-first Agent and Skill management hub",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check:i18n": "node scripts/check-i18n.mjs",
+    "tauri": "tauri",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "release:clean": "bash scripts/build-clean-release.sh",
+    "release:clean:audit": "python3 scripts/audit-clean-release.py",
+    "ci": "npm run check:i18n && npm run check && npm run build && npm run test:rust"
+  },
+  "dependencies": {
+    "@lucide/svelte": "^1.16.0",
+    "@tauri-apps/api": "^2.8.0",
+    "@tauri-apps/plugin-dialog": "^2.4.0",
+    "@tauri-apps/plugin-opener": "^2.5.0"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.0.0",
+    "@tauri-apps/cli": "^2.8.0",
+    "@types/node": "^24.0.0",
+    "svelte": "^5.38.0",
+    "svelte-check": "^4.3.0",
+    "typescript": "~5.9.0",
+    "vite": "^7.1.0"
+  }
+}
