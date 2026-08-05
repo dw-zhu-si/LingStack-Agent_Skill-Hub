@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { save } from "@tauri-apps/plugin-dialog";
+  import { openUrl } from "@tauri-apps/plugin-opener";
   import {
     Archive,
     ArrowUpRight,
@@ -550,6 +551,15 @@
       <div class="source-meta">
         <span>{tr("source.lastCheck", {}, $locale)}</span>
         <strong>{lastAutoCheck || "—"}</strong>
+      </div>
+      <div class="sidebar-legal">
+        <button onclick={() => openUrl("https://pm.jcm99.com/apple/lingstack/privacy.html")}>
+          {tr("common.privacyPolicy", {}, $locale)}
+        </button>
+        <span aria-hidden="true">·</span>
+        <button onclick={() => openUrl("https://pm.jcm99.com/apple/lingstack/support.html")}>
+          {tr("common.support", {}, $locale)}
+        </button>
       </div>
     </div>
   </aside>

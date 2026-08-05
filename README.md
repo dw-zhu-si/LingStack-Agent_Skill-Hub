@@ -6,6 +6,16 @@ LingStack is a local-first desktop hub for discovering, reviewing, verifying, op
 
 The public distribution starts with an empty library. It bundles no Agent, Skill, private registry, model credential, or personal configuration. Local discovery starts only after the user triggers it.
 
+## Product preview / 产品预览
+
+![LingStack unified Agent and Skill map](marketing/store-preview/output/zh-CN/01-lingstack.png)
+
+More App Store-ready previews are available in [`marketing/store-preview/output/zh-CN`](marketing/store-preview/output/zh-CN). All eight images use isolated synthetic data and conform to the Mac App Store 2880×1800 screenshot size.
+
+- [Product page / 产品介绍](https://pm.jcm99.com/apple/lingstack/)
+- [Privacy policy / 隐私政策](https://pm.jcm99.com/apple/lingstack/privacy.html)
+- [Support / 支持](https://pm.jcm99.com/apple/lingstack/support.html)
+
 ## Highlights / 主要能力
 
 - 以空资产库启动；手动刷新只读扫描明确支持的工具入口和用户登记的自定义入口。
@@ -68,6 +78,9 @@ src-tauri/src/governance.rs  Optimization and governance receipts
 src-tauri/src/export.rs      Safe exports
 scripts/check-i18n.mjs       Translation completeness gate
 scripts/audit-clean-release.py Public artifact privacy audit
+app-store/                   11-locale App Store metadata
+marketing/                   Synthetic demo fixture and promotional screenshots
+site/apple/lingstack/        Public product, privacy, and support pages
 ```
 
 ## Privacy boundary / 隐私边界

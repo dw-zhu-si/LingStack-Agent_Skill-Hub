@@ -1,0 +1,5 @@
+LingStack ist eine Local-first-Zentrale für Agents und Skills. Definitionen aus KI-Coding-Tools und Projekten werden erkannt und nach Quelle, Hash, Version und Projektbeziehung geordnet.
+
+Verwalten Sie Ollama- und OpenAI-kompatible Endpunkte, laden Sie mehrere verfügbare Modelle und führen Sie Verbindungs- sowie minimale Inferenztests getrennt aus. Hinzu kommen schreibgeschützte Strukturprüfungen, Optimierungsvorschläge, Versionskonflikte und saubere Exporte.
+
+Tool-Pfade, Versionsauswahl, Lizenzbestätigung und Freigabe werden niemals automatisch geändert. Jede Aktion muss ausdrücklich ausgelöst werden. Die öffentliche Version enthält keine persönlichen Agents oder Skills.

@@ -1,0 +1,5 @@
+LingStack is a local-first hub for Agents and Skills. It discovers capability definitions across supported AI coding tools and projects, then organizes them by source, content hash, version, and project relationship.
+
+Manage Ollama and OpenAI-compatible endpoints, retrieve multiple available models, and run separate connectivity and minimal inference checks. LingStack also provides read-only structural audits, optimization suggestions, version-conflict triage, and clean exports.
+
+Tool-path changes, version selection, license confirmation, and promotion are never applied automatically. They always require an explicit user action. The public release bundles no personal Agents or Skills.

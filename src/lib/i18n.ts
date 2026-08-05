@@ -91,6 +91,8 @@ const rows: MessageRow[] = [
   ["common.enabled", "已启用", "已啟用", "Enabled", "有効", "활성화됨", "Activé", "Aktiviert", "Activado", "Ativado", "Включено", "مفعّل"],
   ["common.disabled", "已停用", "已停用", "Disabled", "無効", "비활성화됨", "Désactivé", "Deaktiviert", "Desactivado", "Desativado", "Отключено", "معطّل"],
   ["common.confirm", "确认", "確認", "Confirm", "確認", "확인", "Confirmer", "Bestätigen", "Confirmar", "Confirmar", "Подтвердить", "تأكيد"],
+  ["common.privacyPolicy", "隐私政策", "隱私政策", "Privacy Policy", "プライバシーポリシー", "개인정보 처리방침", "Politique de confidentialité", "Datenschutz", "Política de privacidad", "Política de privacidade", "Политика конфиденциальности", "سياسة الخصوصية"],
+  ["common.support", "支持", "支援", "Support", "サポート", "지원", "Assistance", "Support", "Soporte", "Suporte", "Поддержка", "الدعم"],
   ["common.apply", "应用", "套用", "Apply", "適用", "적용", "Appliquer", "Anwenden", "Aplicar", "Aplicar", "Применить", "تطبيق"],
   ["common.restore", "恢复", "還原", "Restore", "復元", "복원", "Restaurer", "Wiederherstellen", "Restaurar", "Restaurar", "Восстановить", "استعادة"],
   ["common.details", "详情", "詳情", "Details", "詳細", "세부 정보", "Détails", "Details", "Detalles", "Detalhes", "Сведения", "التفاصيل"],

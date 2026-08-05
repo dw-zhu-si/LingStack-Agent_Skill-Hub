@@ -243,6 +243,31 @@ select:focus-visible {
   font-weight: 600;
 }
 
+.sidebar-legal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  color: rgba(234, 242, 236, 0.38);
+  font-size: 9px;
+}
+
+.sidebar-legal button {
+  padding: 0;
+  border: 0;
+  color: rgba(234, 242, 236, 0.58);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.sidebar-legal button:hover,
+.sidebar-legal button:focus-visible {
+  color: #dfff4b;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 main {
   min-width: 0;
   height: 100vh;

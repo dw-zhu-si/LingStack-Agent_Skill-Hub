@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "LingStack Preview",
+  "identifier": "app.lingzhan.marketing-preview",
+  "app": {
+    "windows": [
+      {
+        "title": "灵栈 · Store Preview",
+        "width": 1380,
+        "height": 900,
+        "minWidth": 1380,
+        "minHeight": 900,
+        "resizable": false,
+        "fullscreen": false,
+        "center": true,
+        "backgroundColor": "#f3f5f0"
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"]
+  }
+}

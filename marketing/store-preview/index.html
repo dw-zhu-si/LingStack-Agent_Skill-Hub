@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LingStack App Store Previews</title>
+    <style>
+      :root {
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
+        color: #153f31;
+        background: #f4f6f1;
+        font-synthesis: none;
+      }
+
+      * { box-sizing: border-box; }
+      html, body { width: 2880px; height: 1800px; margin: 0; overflow: hidden; }
+      body { background: #f4f6f1; }
+
+      .slide {
+        position: relative;
+        width: 2880px;
+        height: 1800px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 82% 14%, rgba(207, 240, 72, 0.26), transparent 27%),
+          linear-gradient(135deg, #f8faf5 0%, #eef2ea 100%);
+      }
+
+      .slide.dark {
+        color: white;
+        background: #082b21 url("../assets/lingstack-map-texture.png") center / cover no-repeat;
+      }
+
+      .slide.lime {
+        background:
+          radial-gradient(circle at 85% 10%, rgba(255,255,255,.7), transparent 25%),
+          linear-gradient(135deg, #dfff45 0%, #edf8b4 42%, #f7f8f2 100%);
+      }
+
+      .slide.warm {
+        background:
+          radial-gradient(circle at 80% 8%, rgba(255, 194, 113, .28), transparent 28%),
+          linear-gradient(135deg, #fffaf1 0%, #f5eee1 100%);
+      }
+
+      .brand {
+        position: absolute;
+        top: 88px;
+        left: 112px;
+        z-index: 3;
+        display: flex;
+        align-items: center;
+        gap: 24px;
+        font-size: 34px;
+        font-weight: 760;
+        letter-spacing: -1px;
+      }
+
+      .brand-mark {
+        width: 72px;
+        height: 72px;
+        display: grid;
+        place-items: center;
+        border-radius: 20px;
+        color: #113e30;
+        background: #dfff45;
+        box-shadow: 0 18px 40px rgba(12, 48, 36, .18);
+      }
+
+      .brand-mark svg { width: 42px; height: 42px; }
+      .dark .brand { color: white; }
+
+      .counter {
+        position: absolute;
+        top: 105px;
+        right: 120px;
+        z-index: 3;
+        padding: 16px 24px;
+        border: 1px solid rgba(20, 62, 48, .16);
+        border-radius: 999px;
+        color: #386658;
+        background: rgba(255,255,255,.64);
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 3px;
+      }
+
+      .dark .counter {
+        color: rgba(255,255,255,.78);
+        border-color: rgba(255,255,255,.17);
+        background: rgba(4, 35, 26, .45);
+      }
+
+      .copy {
+        position: absolute;
+        top: 180px;
+        left: 236px;
+        right: 236px;
+        z-index: 3;
+        text-align: center;
+      }
+
+      .eyebrow {
+        margin-bottom: 22px;
+        color: #2f775c;
+        font-size: 26px;
+        font-weight: 850;
+        letter-spacing: 7px;
+        text-transform: uppercase;
+      }
+
+      .dark .eyebrow { color: #dfff45; }
+      h1 {
+        margin: 0;
+        font-size: 78px;
+        line-height: 1.08;
+        letter-spacing: -4px;
+        text-wrap: balance;
+      }
+
+      .subtitle {
+        max-width: 2000px;
+        margin: 22px auto 0;
+        color: #5f756b;
+        font-size: 28px;
+        line-height: 1.45;
+      }
+
+      .dark .subtitle { color: rgba(255,255,255,.72); }
+
+      .app-frame {
+        position: absolute;
+        z-index: 2;
+        left: 50%;
+        top: 620px;
+        width: 2320px;
+        height: 1514px;
+        overflow: hidden;
+        border: 1px solid rgba(18, 58, 44, .15);
+        border-radius: 42px;
+        background: white;
+        box-shadow: 0 80px 160px rgba(11, 45, 34, .24), 0 20px 55px rgba(11,45,34,.16);
+        transform: translateX(-50%);
+      }
+
+      .dark .app-frame { border-color: rgba(223,255,69,.28); box-shadow: 0 90px 180px rgba(0,0,0,.42); }
+      .app-frame img { display: block; width: 100%; height: auto; }
+
+      .pills {
+        position: absolute;
+        z-index: 4;
+        top: 522px;
+        left: 50%;
+        display: flex;
+        gap: 14px;
+        transform: translateX(-50%);
+      }
+
+      .pill {
+        padding: 14px 24px;
+        border: 1px solid rgba(22, 66, 51, .14);
+        border-radius: 999px;
+        color: #214f3e;
+        background: rgba(255,255,255,.88);
+        box-shadow: 0 10px 30px rgba(14,48,37,.08);
+        font-size: 22px;
+        font-weight: 760;
+        white-space: nowrap;
+      }
+
+      .dark .pill { color: white; border-color: rgba(255,255,255,.18); background: rgba(10,54,40,.85); }
+
+      .tool-cloud {
+        position: absolute;
+        z-index: 5;
+        top: 1270px;
+        right: 155px;
+        width: 560px;
+        padding: 38px;
+        border: 1px solid rgba(22,66,51,.12);
+        border-radius: 32px;
+        background: rgba(255,255,255,.94);
+        box-shadow: 0 32px 80px rgba(16,53,40,.2);
+      }
+
+      .tool-cloud strong { display: block; margin-bottom: 20px; font-size: 27px; }
+      .tool-cloud div { display: flex; flex-wrap: wrap; gap: 10px; }
+      .tool-cloud span { padding: 10px 15px; border-radius: 10px; color: #315f50; background: #edf4ed; font-size: 19px; font-weight: 700; }
+
+      .language-cloud {
+        position: absolute;
+        z-index: 5;
+        top: 520px;
+        left: 50%;
+        width: 2240px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 14px;
+        transform: translateX(-50%);
+      }
+
+      .language-cloud span {
+        padding: 13px 20px;
+        border: 1px solid rgba(22, 66, 51, .12);
+        border-radius: 999px;
+        color: #315f50;
+        background: rgba(255,255,255,.9);
+        font-size: 20px;
+        font-weight: 720;
+      }
+
+      .language .app-frame { top: 650px; }
+
+      .demo-note {
+        position: absolute;
+        z-index: 6;
+        right: 66px;
+        bottom: 36px;
+        color: rgba(32, 73, 58, .52);
+        font-size: 16px;
+        letter-spacing: 1px;
+      }
+
+      .dark .demo-note { color: rgba(255,255,255,.48); }
+    </style>
+  </head>
+  <body>
+    <main id="root"></main>
+    <script>
+      const slides = [
+        {
+          theme: "dark", eyebrow: "LINGSTACK · LOCAL-FIRST CONTROL CENTER",
+          title: "所有 Agent 与 Skill，<br>一张地图统一管理",
+          subtitle: "统一发现、项目图谱、版本验真与优化建议，在一个清晰、可追溯的工作台里完成。",
+          image: "../raw/01-overview.png",
+          pills: ["本地优先", "证据化状态", "不内置私人资产"]
+        },
+        {
+          theme: "", eyebrow: "PROJECT CAPABILITY ATLAS",
+          title: "项目关系，<br>不再靠猜",
+          subtitle: "按项目查看 Agent、Skill、工具覆盖与待处理能力，把分散资产变成可理解的能力地图。",
+          image: "../raw/03-projects.png",
+          pills: ["项目覆盖率", "工具分布", "待处理能力"]
+        },
+        {
+          theme: "lime", eyebrow: "MULTI-MODEL ACCESS",
+          title: "一次接入，<br>自动发现多个模型",
+          subtitle: "统一管理 Ollama 与 OpenAI 兼容接口，拉取模型列表，再分别进行连接与推理验真。",
+          image: "../raw/05-controls.png",
+          pills: ["多模型拉取", "连接检查", "推理验真"]
+        },
+        {
+          theme: "dark", eyebrow: "READ-ONLY AUTO AUDIT",
+          title: "先验真，<br>再使用",
+          subtitle: "从结构、路径、完整性和风险边界给出评分与优化建议，不把“文件存在”误写成“可用”。",
+          image: "../raw/08-verification.png",
+          pills: ["轻量检查", "深度验真", "优化建议"]
+        },
+        {
+          theme: "warm", eyebrow: "VERSION & EVOLUTION",
+          title: "冲突、版本与优化建议，<br>一次看清",
+          subtitle: "发现变化后再比较证据；版本选择、许可确认、验真和晋升始终由用户明确操作。",
+          image: "../raw/04-evolution.png",
+          pills: ["版本冲突", "许可边界", "可回滚治理"]
+        },
+        {
+          theme: "", eyebrow: "UNIFIED TOOL PATHS",
+          title: "一个中枢，<br>管理更多工具路径",
+          subtitle: "覆盖常见 AI 编程工具与自定义入口；路径切换只在用户手动触发后执行，并保留回滚凭据。",
+          image: "../raw/07-tool-paths.png",
+          pills: ["手动触发", "变更预览", "回滚回执"],
+          tools: ["Codex", "Claude", "Cursor", "Gemini CLI", "Trae", "Windsurf", "OpenCode", "自定义工具"]
+        },
+        {
+          theme: "warm", eyebrow: "CLEAN & AUDITABLE EXPORT",
+          title: "导出干净、<br>可审计的资产包",
+          subtitle: "按选择、Agent、Skill 或关系组合导出；记录哈希、状态和安全排除项，避免把密钥带出本机。",
+          image: "../raw/06-exports.png",
+          pills: ["SHA-256", "秘密排除", "JSON · Markdown · ZIP"]
+        },
+        {
+          theme: "language", eyebrow: "11 INTERFACE LANGUAGES",
+          title: "用你的语言，<br>管理全球协作",
+          subtitle: "简体中文、繁體中文及另外 9 种语言，覆盖常用团队协作场景并支持 RTL 界面方向。",
+          image: "../raw/09-english-overview.png",
+          languages: ["简体中文", "繁體中文", "English", "日本語", "한국어", "Français", "Deutsch", "Español", "Português", "Русский", "العربية"]
+        }
+      ];
+
+      const requested = Number(new URLSearchParams(location.search).get("slide") || "1");
+      const index = Math.max(0, Math.min(slides.length - 1, requested - 1));
+      const slide = slides[index];
+      const icon = `<svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><path d="M8 16 24 8l16 8-16 8L8 16Z" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="m8 24 16 8 16-8M8 32l16 8 16-8" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      document.querySelector("#root").innerHTML = `
+        <section class="slide ${slide.theme}">
+          <div class="brand"><span class="brand-mark">${icon}</span><span>灵栈 <small style="font-size:20px;opacity:.58;font-weight:650">LingStack</small></span></div>
+          <div class="counter">${String(index + 1).padStart(2,"0")} / 08</div>
+          <div class="copy"><div class="eyebrow">${slide.eyebrow}</div><h1>${slide.title}</h1><p class="subtitle">${slide.subtitle}</p></div>
+          ${slide.pills ? `<div class="pills">${slide.pills.map(item => `<span class="pill">${item}</span>`).join("")}</div>` : ""}
+          ${slide.languages ? `<div class="language-cloud">${slide.languages.map(item => `<span>${item}</span>`).join("")}</div>` : ""}
+          <div class="app-frame"><img src="${slide.image}" alt="灵栈真实功能界面" /></div>
+          ${slide.tools ? `<aside class="tool-cloud"><strong>支持更多工具与自定义入口</strong><div>${slide.tools.map(item => `<span>${item}</span>`).join("")}</div></aside>` : ""}
+          <span class="demo-note">APP STORE PREVIEW · 隔离演示数据</span>
+        </section>`;
+    </script>
+  </body>
+</html>
