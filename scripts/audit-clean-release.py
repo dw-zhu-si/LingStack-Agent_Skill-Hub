@@ -28,6 +28,8 @@ EXPECTED_FILES = {
     "Contents/Resources/icon.icns",
     "Contents/_CodeSignature/CodeResources",
 }
+# A notarized `.app` contains Apple's stapled ticket at this optional path.
+OPTIONAL_FILES = {"Contents/CodeResources"}
 MAX_ZIP_MEMBER_BYTES = 128 * 1024 * 1024
 
 
@@ -38,6 +40,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--report", type=Path)
     parser.add_argument("--forbid", action="append", default=[])
     parser.add_argument("--expected-version", default="0.11.0")
+    parser.add_argument("--expected-identifier", default="app.lingzhan.agent-skill-hub")
+    parser.add_argument("--allow-provisioning-profile", action="store_true")
     return parser.parse_args()
 
 
@@ -115,8 +119,11 @@ def audit(args: argparse.Namespace) -> dict[str, object]:
         artifact_type = "app"
 
     file_names = set(files)
-    unexpected_files = sorted(file_names - EXPECTED_FILES)
-    missing_files = sorted(EXPECTED_FILES - file_names)
+    expected_files = set(EXPECTED_FILES)
+    if args.allow_provisioning_profile:
+        expected_files.add("Contents/embedded.provisionprofile")
+    unexpected_files = sorted(file_names - expected_files - OPTIONAL_FILES)
+    missing_files = sorted(expected_files - file_names)
     definition_files = sorted(
         name for name in file_names if name.lower().endswith(FORBIDDEN_DEFINITION_SUFFIXES)
     )
@@ -132,8 +139,8 @@ def audit(args: argparse.Namespace) -> dict[str, object]:
     identifier = plist.get("CFBundleIdentifier", "")
     version = plist.get("CFBundleShortVersionString", "")
     errors = []
-    if identifier != "app.lingzhan.agent-skill-hub":
-        errors.append("bundle identifier is not the clean public identifier")
+    if identifier != args.expected_identifier:
+        errors.append("bundle identifier does not match the expected release identifier")
     if version != args.expected_version:
         errors.append("bundle version does not match the expected release version")
     if unexpected_files:

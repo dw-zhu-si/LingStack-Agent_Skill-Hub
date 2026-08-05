@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "灵栈",
+  "identifier": "app.lingzhan.lingstack.store",
+  "version": "0.11.0",
+  "bundle": {
+    "targets": ["app"],
+    "category": "DeveloperTool",
+    "shortDescription": "本地 Agent 与 Skill 管理器",
+    "longDescription": "在用户授权的文件夹中盘点、验证、治理和导出 Agent 与 Skill。",
+    "macOS": {
+      "bundleVersion": "110",
+      "minimumSystemVersion": "10.15",
+      "hardenedRuntime": false,
+      "entitlements": "entitlements.app-store.plist",
+      "infoPlist": "Info.app-store.plist",
+      "files": {
+        "embedded.provisionprofile": "profiles/LingStack_Mac_App_Store.provisionprofile"
+      }
+    }
+  }
+}

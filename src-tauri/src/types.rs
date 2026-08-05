@@ -242,6 +242,8 @@ pub struct CustomToolBinding {
     pub tool: String,
     pub kind: String,
     pub source_path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub security_bookmark: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -263,6 +265,7 @@ pub struct ControlCenterState {
     pub bindings: Vec<ToolBindingPreview>,
     pub receipts: Vec<BindingReceipt>,
     pub unified_root: String,
+    pub store_sandbox: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]

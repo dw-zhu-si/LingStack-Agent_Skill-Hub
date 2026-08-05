@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { FolderCog, Plus, RotateCcw, Trash2 } from "@lucide/svelte";
+  import { FolderCog, FolderOpen, Plus, RotateCcw, Trash2 } from "@lucide/svelte";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { applyToolBinding, deleteCustomBinding, restoreToolBinding, saveCustomBinding } from "../api";
   import type { ControlCenterState, CustomToolBinding, ToolBindingPreview } from "../types";
   import { locale, tr } from "../i18n";
@@ -45,6 +46,13 @@
     finally { busy = ""; }
   }
 
+  async function chooseFolder() {
+    try {
+      const selected = await open({ directory: true, multiple: false, title: tr("path.chooseFolder", {}, $locale) });
+      if (typeof selected === "string") custom.source_path = selected;
+    } catch (reason) { reportError(reason); }
+  }
+
   async function removeCustom(binding: ToolBindingPreview) {
     if (!window.confirm(`${tr("common.delete", {}, $locale)}: ${binding.tool}?`)) return;
     try { await deleteCustomBinding(binding.id); await reload(); }
@@ -57,7 +65,7 @@
     <div><span class="section-kicker">TOOL PATH ROUTER</span><h2>{tr("path.title", {}, $locale)}</h2><small>{controlState.unified_root}</small></div>
     <div><label class="inline-check"><input type="checkbox" bind:checked={showCandidates} /><span>{tr("common.all", {}, $locale)}</span></label><button class="secondary-button small" onclick={() => (adding = true)}><Plus size={15} />{tr("common.add", {}, $locale)}</button></div>
   </header>
-  <div class="manual-banner"><FolderCog size={18} /><span>{tr("path.manual", {}, $locale)}</span></div>
+  <div class="manual-banner"><FolderCog size={18} /><span>{tr(controlState.store_sandbox ? "path.storeSandbox" : "path.manual", {}, $locale)}</span></div>
   <div class="binding-table">
     <div class="binding-head"><span>{tr("common.typeFilter", {}, $locale)}</span><span>{tr("controls.paths", {}, $locale)}</span><span>{tr("common.status", {}, $locale)}</span><span>{tr("common.apply", {}, $locale)}</span></div>
     {#each visibleBindings as binding}
@@ -87,10 +95,11 @@
   <div class="control-modal-backdrop" role="presentation">
     <form class="control-modal" autocomplete="off" onsubmit={(event) => { event.preventDefault(); saveCustom(); }}>
       <header><div><span class="section-kicker">CUSTOM TOOL</span><h2>{tr("common.add", {}, $locale)}</h2></div><button type="button" onclick={() => (adding = false)}>{tr("common.cancel", {}, $locale)}</button></header>
-      <p>{tr("path.manual", {}, $locale)}</p>
+      <p>{tr(controlState.store_sandbox ? "path.storeSandbox" : "path.manual", {}, $locale)}</p>
       <label><span>{tr("model.displayName", {}, $locale)}</span><input bind:value={custom.tool} required autocomplete="off" /></label>
       <label><span>{tr("common.typeFilter", {}, $locale)}</span><select bind:value={custom.kind}><option value="Agent">Agent</option><option value="Skill">Skill</option></select></label>
-      <label><span>{tr("controls.paths", {}, $locale)}</span><input bind:value={custom.source_path} required placeholder="/Users/name/.tool/skills" autocomplete="off" spellcheck="false" /></label>
+      <label><span>{tr("controls.paths", {}, $locale)}</span><input bind:value={custom.source_path} readonly={controlState.store_sandbox} required placeholder={controlState.store_sandbox ? tr("path.folderRequired", {}, $locale) : "/Users/name/.tool/skills"} autocomplete="off" spellcheck="false" /></label>
+      {#if controlState.store_sandbox}<button type="button" class="secondary-button" onclick={chooseFolder}><FolderOpen size={15} />{tr("path.chooseFolder", {}, $locale)}</button>{/if}
       <button class="primary-button">{tr("common.save", {}, $locale)}</button>
     </form>
   </div>

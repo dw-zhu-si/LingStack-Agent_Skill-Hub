@@ -6,22 +6,24 @@ use chrono::Local;
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+#[cfg(not(feature = "app-store"))]
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+#[cfg(not(feature = "app-store"))]
 use walkdir::WalkDir;
 
-#[cfg(not(feature = "public-release"))]
+#[cfg(not(feature = "app-store"))]
 const APP_DIR: &str = "app.lingzhan.agent-skill-hub";
-#[cfg(feature = "public-release")]
-const APP_DIR: &str = "app.lingzhan.agent-skill-hub";
+#[cfg(feature = "app-store")]
+const APP_DIR: &str = "app.lingzhan.lingstack.store";
 const CONFIG_FILE: &str = "control-center.json";
 const RECEIPTS_FILE: &str = "binding-receipts.json";
-#[cfg(not(feature = "public-release"))]
+#[cfg(not(feature = "app-store"))]
 const KEYCHAIN_SERVICE: &str = "app.lingzhan.agent-skill-hub.model-credentials";
-#[cfg(feature = "public-release")]
-const KEYCHAIN_SERVICE: &str = "app.lingzhan.agent-skill-hub.model-credentials";
+#[cfg(feature = "app-store")]
+const KEYCHAIN_SERVICE: &str = "app.lingzhan.lingstack.store.model-credentials";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct ControlConfig {
@@ -231,6 +233,7 @@ fn validate_profile(profile: &ModelProfile) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(feature = "app-store"))]
 fn tool_detected(tool: &str, home: &Path) -> bool {
     match tool {
         "Codex" => home.join(".codex").exists(),
@@ -262,6 +265,7 @@ fn tool_detected(tool: &str, home: &Path) -> bool {
     }
 }
 
+#[cfg(not(feature = "app-store"))]
 fn binding_definitions() -> Result<Vec<BindingDefinition>, String> {
     let home = dirs::home_dir().ok_or_else(|| "无法定位当前用户主目录".to_string())?;
     let trae_root = home.join(".trae");
@@ -349,9 +353,30 @@ fn binding_definitions() -> Result<Vec<BindingDefinition>, String> {
     Ok(definitions)
 }
 
+#[cfg(feature = "app-store")]
+fn binding_definitions() -> Result<Vec<BindingDefinition>, String> {
+    Ok(read_config()?
+        .custom_bindings
+        .into_iter()
+        .map(|binding| {
+            let resolved = crate::sandbox::resolve_security_bookmark(&binding.security_bookmark);
+            let detected = resolved.as_ref().is_ok_and(|path| path.is_dir());
+            let source = resolved.unwrap_or_else(|_| PathBuf::from(&binding.source_path));
+            BindingDefinition {
+                id: binding.id,
+                tool: binding.tool,
+                kind: binding.kind,
+                detected,
+                source,
+                custom: true,
+            }
+        })
+        .collect())
+}
+
 /// 返回当前设备中允许被“刷新本机资产”读取的显式工具入口。
 /// 这里只暴露路径元数据；扫描器不跟随符号链接，也不会修改这些目录。
-#[cfg(feature = "public-release")]
+#[cfg(all(feature = "public-release", not(feature = "app-store")))]
 pub(crate) fn local_asset_roots() -> Result<Vec<(String, String, PathBuf)>, String> {
     let home = dirs::home_dir().ok_or_else(|| "无法定位当前用户主目录".to_string())?;
     let mut roots = binding_definitions()?
@@ -373,6 +398,16 @@ pub(crate) fn local_asset_roots() -> Result<Vec<(String, String, PathBuf)>, Stri
     Ok(roots)
 }
 
+#[cfg(feature = "app-store")]
+pub(crate) fn local_asset_roots() -> Result<Vec<(String, String, PathBuf)>, String> {
+    Ok(binding_definitions()?
+        .into_iter()
+        .filter(|definition| definition.detected && definition.source.is_dir())
+        .map(|definition| (definition.tool, definition.kind, definition.source))
+        .collect())
+}
+
+#[cfg(not(feature = "app-store"))]
 fn target_for(definition: &BindingDefinition) -> Result<PathBuf, String> {
     Ok(unified_root()?.join(if definition.kind == "Agent" {
         "agents"
@@ -387,6 +422,7 @@ fn entry_count(path: &Path) -> usize {
         .unwrap_or(0)
 }
 
+#[cfg(not(feature = "app-store"))]
 fn preview_binding(definition: &BindingDefinition) -> Result<ToolBindingPreview, String> {
     let target = target_for(definition)?;
     let metadata = fs::symlink_metadata(&definition.source).ok();
@@ -471,6 +507,30 @@ fn preview_binding(definition: &BindingDefinition) -> Result<ToolBindingPreview,
     })
 }
 
+#[cfg(feature = "app-store")]
+fn preview_binding(definition: &BindingDefinition) -> Result<ToolBindingPreview, String> {
+    let exists = definition.detected;
+    Ok(ToolBindingPreview {
+        id: definition.id.clone(),
+        tool: definition.tool.clone(),
+        kind: definition.kind.clone(),
+        source_path: definition.source.display().to_string(),
+        target_path: String::new(),
+        source_state: if exists { "selected" } else { "missing" }.to_string(),
+        entry_count: entry_count(&definition.source),
+        detected: exists,
+        status: if exists { "authorized" } else { "unavailable" }.to_string(),
+        can_apply: false,
+        requires_migration: false,
+        message: if exists {
+            "已获沙盒授权；只在手动刷新时读取，不会改写工具路径".to_string()
+        } else {
+            "所选目录当前不可用，请删除后重新选择".to_string()
+        },
+        custom: definition.custom,
+    })
+}
+
 fn read_receipts() -> Result<Vec<BindingReceipt>, String> {
     let path = control_dir()?.join(RECEIPTS_FILE);
     if !path.exists() {
@@ -492,6 +552,7 @@ pub fn load_control_center() -> Result<ControlCenterState, String> {
         bindings,
         receipts: read_receipts()?.into_iter().rev().take(20).collect(),
         unified_root: unified_root()?.display().to_string(),
+        store_sandbox: cfg!(feature = "app-store"),
     })
 }
 
@@ -580,15 +641,28 @@ fn validate_custom_binding(binding: &CustomToolBinding) -> Result<(), String> {
         return Err("资产类型只能是 Agent 或 Skill".to_string());
     }
     let path = Path::new(&binding.source_path);
-    let home = dirs::home_dir().ok_or_else(|| "无法定位当前用户主目录".to_string())?;
+    #[cfg(not(feature = "app-store"))]
+    {
+        let home = dirs::home_dir().ok_or_else(|| "无法定位当前用户主目录".to_string())?;
+        if !path.is_absolute()
+            || !path.starts_with(&home)
+            || path == home
+            || path
+                .components()
+                .any(|component| matches!(component, std::path::Component::ParentDir))
+        {
+            return Err("自定义入口必须是主目录下的明确绝对路径，且不能包含 ..".to_string());
+        }
+    }
+    #[cfg(feature = "app-store")]
     if !path.is_absolute()
-        || !path.starts_with(&home)
-        || path == home
+        || path.parent().is_none()
+        || !path.is_dir()
         || path
             .components()
             .any(|component| matches!(component, std::path::Component::ParentDir))
     {
-        return Err("自定义入口必须是主目录下的明确绝对路径，且不能包含 ..".to_string());
+        return Err("请选择一个当前可访问的明确文件夹".to_string());
     }
     if path.starts_with(unified_root()?) {
         return Err("工具入口不能位于灵栈统一目录内部，以免形成循环链接".to_string());
@@ -598,7 +672,14 @@ fn validate_custom_binding(binding: &CustomToolBinding) -> Result<(), String> {
 
 #[tauri::command]
 pub fn save_custom_binding(binding: CustomToolBinding) -> Result<ControlCenterState, String> {
+    #[cfg(feature = "app-store")]
+    let mut binding = binding;
     validate_custom_binding(&binding)?;
+    #[cfg(feature = "app-store")]
+    {
+        binding.security_bookmark =
+            crate::sandbox::create_security_bookmark(Path::new(&binding.source_path))?;
+    }
     let mut config = read_config()?;
     if config
         .custom_bindings
@@ -862,6 +943,7 @@ async fn test_profile_connection(
     })
 }
 
+#[cfg(not(feature = "app-store"))]
 fn file_hash(path: &Path) -> Result<Vec<u8>, String> {
     let bytes =
         fs::read(path).map_err(|error| format!("无法比较文件 {}：{error}", path.display()))?;
@@ -874,6 +956,7 @@ fn file_hash(path: &Path) -> Result<Vec<u8>, String> {
     Ok(Sha256::digest(bytes).to_vec())
 }
 
+#[cfg(not(feature = "app-store"))]
 fn preflight_merge(source: &Path, target: &Path) -> Result<(), String> {
     if !source.is_dir() {
         return Ok(());
@@ -918,6 +1001,7 @@ fn preflight_merge(source: &Path, target: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(feature = "app-store"))]
 fn copy_merge(source: &Path, target: &Path) -> Result<(), String> {
     for entry in WalkDir::new(source)
         .follow_links(false)
@@ -954,6 +1038,7 @@ fn copy_merge(source: &Path, target: &Path) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(feature = "app-store"))]
 fn definition_by_id(id: &str) -> Result<BindingDefinition, String> {
     binding_definitions()?
         .into_iter()
@@ -962,6 +1047,7 @@ fn definition_by_id(id: &str) -> Result<BindingDefinition, String> {
 }
 
 #[tauri::command]
+#[cfg(not(feature = "app-store"))]
 pub fn apply_tool_binding(
     binding_id: String,
     migrate_existing: bool,
@@ -1023,6 +1109,17 @@ pub fn apply_tool_binding(
 }
 
 #[tauri::command]
+#[cfg(feature = "app-store")]
+pub fn apply_tool_binding(
+    _binding_id: String,
+    _migrate_existing: bool,
+    _confirmation: String,
+) -> Result<BindingReceipt, String> {
+    Err("App Store 沙盒版不会更改任何工具的调用路径；请使用目录选择授权读取".to_string())
+}
+
+#[tauri::command]
+#[cfg(not(feature = "app-store"))]
 pub fn restore_tool_binding(
     receipt_id: String,
     confirmation: String,
@@ -1060,6 +1157,15 @@ pub fn restore_tool_binding(
     receipts[index] = receipt.clone();
     write_json_atomic(&control_dir()?.join(RECEIPTS_FILE), &receipts)?;
     Ok(receipt)
+}
+
+#[tauri::command]
+#[cfg(feature = "app-store")]
+pub fn restore_tool_binding(
+    _receipt_id: String,
+    _confirmation: String,
+) -> Result<BindingReceipt, String> {
+    Err("App Store 沙盒版没有路径切换操作，因此无需恢复".to_string())
 }
 
 #[cfg(test)]

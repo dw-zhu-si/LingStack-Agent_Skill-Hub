@@ -70,6 +70,21 @@ codesign --verify --deep --strict --verbose=2 "${BUILT_APP}"
 ditto --norsrc "${BUILT_APP}" "${APP_PATH}"
 codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
 
+NOTARY_KEY="${LINGZHAN_NOTARY_KEY:-}"
+NOTARY_KEY_ID="${LINGZHAN_NOTARY_KEY_ID:-}"
+NOTARY_ISSUER="${LINGZHAN_NOTARY_ISSUER:-}"
+if [[ -n "${NOTARY_KEY}" || -n "${NOTARY_KEY_ID}" || -n "${NOTARY_ISSUER}" ]]; then
+  : "${NOTARY_KEY:?Set LINGZHAN_NOTARY_KEY}"
+  : "${NOTARY_KEY_ID:?Set LINGZHAN_NOTARY_KEY_ID}"
+  : "${NOTARY_ISSUER:?Set LINGZHAN_NOTARY_ISSUER}"
+  NOTARY_UPLOAD="${BUILD_TARGET_DIR}/notary-upload.zip"
+  ditto -c -k --norsrc --keepParent "${APP_PATH}" "${NOTARY_UPLOAD}"
+  xcrun notarytool submit "${NOTARY_UPLOAD}" --wait \
+    --key "${NOTARY_KEY}" --key-id "${NOTARY_KEY_ID}" --issuer "${NOTARY_ISSUER}"
+  xcrun stapler staple "${APP_PATH}"
+  xcrun stapler validate "${APP_PATH}"
+fi
+
 DMG_STAGE="${BUILD_TARGET_DIR}/dmg-stage"
 mkdir -p "${DMG_STAGE}"
 ditto --norsrc "${APP_PATH}" "${DMG_STAGE}/灵栈.app"
@@ -78,6 +93,13 @@ hdiutil create -volname "灵栈" -srcfolder "${DMG_STAGE}" -format UDZO "${DMG_P
 codesign --force --timestamp --sign "${SIGNING_IDENTITY}" "${DMG_PATH}"
 codesign --verify --verbose=2 "${DMG_PATH}"
 hdiutil verify "${DMG_PATH}"
+
+if [[ -n "${NOTARY_KEY}" ]]; then
+  xcrun notarytool submit "${DMG_PATH}" --wait \
+    --key "${NOTARY_KEY}" --key-id "${NOTARY_KEY_ID}" --issuer "${NOTARY_ISSUER}"
+  xcrun stapler staple "${DMG_PATH}"
+  xcrun stapler validate "${DMG_PATH}"
+fi
 
 AUDIT_ARGS=(--expected-version "${VERSION}" --forbid "$(id -un)" --forbid "${PROJECT_ROOT}")
 python3 scripts/audit-clean-release.py "${APP_PATH}" "${AUDIT_ARGS[@]}" --report "${APP_REPORT}"

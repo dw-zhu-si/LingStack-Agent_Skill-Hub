@@ -8,6 +8,7 @@ edition = "2021"
 [features]
 default = ["public-release"]
 public-release = []
+app-store = ["public-release"]
 
 [lib]
 name = "agent_skill_hub_lib"
@@ -31,4 +32,6 @@ walkdir = "2"
 zip = { version = "4", default-features = false, features = ["deflate"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+base64 = "0.22"
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSData", "NSError", "NSString", "NSURL"] }
 security-framework = "3"

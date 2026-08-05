@@ -3,6 +3,8 @@ mod export;
 mod governance;
 mod registry;
 mod relations;
+#[cfg(all(target_os = "macos", feature = "app-store"))]
+mod sandbox;
 mod types;
 mod verification;
 

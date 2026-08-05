@@ -182,6 +182,7 @@ export interface CustomToolBinding {
   tool: string;
   kind: "Agent" | "Skill";
   source_path: string;
+  security_bookmark?: string;
 }
 
 export interface BindingReceipt {
@@ -200,6 +201,7 @@ export interface ControlCenterState {
   bindings: ToolBindingPreview[];
   receipts: BindingReceipt[];
   unified_root: string;
+  store_sandbox: boolean;
 }
 
 export interface AuditCheck {
