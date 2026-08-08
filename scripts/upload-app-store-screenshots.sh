@@ -11,6 +11,7 @@ repository_root="$(cd "$(dirname "$0")/.." && pwd)"
 screenshot_dir="${APP_STORE_SCREENSHOT_DIR:-$repository_root/marketing/store-preview/output/zh-CN}"
 locale="${APP_STORE_SCREENSHOT_LOCALE:-zh-Hans}"
 display_type="${APP_STORE_SCREENSHOT_DISPLAY_TYPE:-APP_DESKTOP}"
+excluded_names=",${APP_STORE_SCREENSHOT_EXCLUDE:-03-lingstack.png},"
 api_base="https://api.appstoreconnect.apple.com/v1"
 jq_bin="$(command -v jq)"
 curl_bin="$(command -v curl)"
@@ -58,17 +59,40 @@ if [[ -z "$set_id" ]]; then
   set_id="$(print -r -- "$response" | "$jq_bin" -r '.data.id')"
 fi
 
+screenshot_files=()
+for candidate in "$screenshot_dir"/*.png(N); do
+  file_name="$(basename "$candidate")"
+  if [[ "$excluded_names" == *",$file_name,"* ]]; then
+    print "Skipping excluded App Store screenshot: $file_name"
+    continue
+  fi
+  screenshot_files+=("$candidate")
+done
+if (( ${#screenshot_files[@]} == 0 )); then
+  print -u2 "No eligible PNG screenshots found in $screenshot_dir."
+  exit 1
+fi
+
 existing="$(api_request GET "/appScreenshotSets/$set_id/appScreenshots?limit=200")"
 existing_count="$(print -r -- "$existing" | "$jq_bin" -r '.data | length')"
 if (( existing_count > 0 )); then
-  print -u2 "Screenshot set $set_id already contains $existing_count image(s); refusing to create duplicates."
-  exit 2
-fi
-
-screenshot_files=("$screenshot_dir"/*.png(N))
-if (( ${#screenshot_files[@]} == 0 )); then
-  print -u2 "No PNG screenshots found in $screenshot_dir."
-  exit 1
+  if [[ "${APP_STORE_REPLACE_SCREENSHOTS:-0}" != "1" ]]; then
+    print -u2 "Screenshot set $set_id already contains $existing_count image(s); set APP_STORE_REPLACE_SCREENSHOTS=1 to replace them."
+    exit 2
+  fi
+  while IFS= read -r screenshot_id; do
+    [[ -n "$screenshot_id" ]] || continue
+    response="$(api_request DELETE "/appScreenshots/$screenshot_id")"
+    if [[ -n "$response" ]] && print -r -- "$response" | "$jq_bin" -e '.errors' >/dev/null 2>&1; then
+      print -u2 "Unable to delete screenshot $screenshot_id: $(print -r -- "$response" | "$jq_bin" -c '.errors')"
+      exit 1
+    fi
+  done < <(print -r -- "$existing" | "$jq_bin" -r '.data[].id')
+  remaining="$(api_request GET "/appScreenshotSets/$set_id/appScreenshots?limit=200" | "$jq_bin" -r '.data | length')"
+  if (( remaining != 0 )); then
+    print -u2 "Screenshot replacement stopped because $remaining existing image(s) remain."
+    exit 1
+  fi
 fi
 
 uploaded_ids=()
@@ -140,4 +164,4 @@ for screenshot_id in "${uploaded_ids[@]}"; do
   fi
 done
 
-print "Uploaded and processed ${#uploaded_ids[@]} App Store screenshots for $locale."
+print "Uploaded and processed ${#uploaded_ids[@]} App Store screenshots for $locale; exclusions: ${APP_STORE_SCREENSHOT_EXCLUDE:-03-lingstack.png}."

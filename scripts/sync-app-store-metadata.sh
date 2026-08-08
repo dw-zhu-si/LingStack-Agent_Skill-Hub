@@ -84,7 +84,7 @@ for locale_dir in "$metadata_root"/*; do
       --rawfile marketing "$locale_dir/marketing_url.txt" \
       --rawfile promotional "$locale_dir/promotional_text.txt" \
       --rawfile support "$locale_dir/support_url.txt" \
-      '{data:{type:"appStoreVersionLocalizations",id:$id,attributes:{description:($description|sub("\\n+$";"")),keywords:($keywords|sub("\\n+$";"")),marketingUrl:($marketing|sub("\\n+$";"")),promotionalText:($promotional|sub("\\n+$";"")),supportUrl:($support|sub("\\n+$";""))}}}')"
+      '{data:{type:"appStoreVersionLocalizations",id:$id,attributes:{description:($description|sub("\\n+$";"")),keywords:($keywords|sub("\\n+$";"")),marketingUrl:(($marketing|sub("\\n+$";"")) | if length == 0 then null else . end),promotionalText:($promotional|sub("\\n+$";"")),supportUrl:($support|sub("\\n+$";""))}}}')"
     response="$(api_request PATCH "/appStoreVersionLocalizations/$version_localization_id" "$payload")"
   else
     payload="$("$jq_bin" -n \
@@ -95,7 +95,7 @@ for locale_dir in "$metadata_root"/*; do
       --rawfile marketing "$locale_dir/marketing_url.txt" \
       --rawfile promotional "$locale_dir/promotional_text.txt" \
       --rawfile support "$locale_dir/support_url.txt" \
-      '{data:{type:"appStoreVersionLocalizations",attributes:{locale:$locale,description:($description|sub("\\n+$";"")),keywords:($keywords|sub("\\n+$";"")),marketingUrl:($marketing|sub("\\n+$";"")),promotionalText:($promotional|sub("\\n+$";"")),supportUrl:($support|sub("\\n+$";""))},relationships:{appStoreVersion:{data:{type:"appStoreVersions",id:$version_id}}}}}')"
+      '{data:{type:"appStoreVersionLocalizations",attributes:{locale:$locale,description:($description|sub("\\n+$";"")),keywords:($keywords|sub("\\n+$";"")),marketingUrl:(($marketing|sub("\\n+$";"")) | if length == 0 then null else . end),promotionalText:($promotional|sub("\\n+$";"")),supportUrl:($support|sub("\\n+$";""))},relationships:{appStoreVersion:{data:{type:"appStoreVersions",id:$version_id}}}}}')"
     response="$(api_request POST "/appStoreVersionLocalizations" "$payload")"
     version_localization_id="$(print -r -- "$response" | "$jq_bin" -r '.data.id // empty')"
   fi
@@ -108,5 +108,27 @@ for locale_dir in "$metadata_root"/*; do
 
   print "$locale synced"
 done
+
+review_notes_path="${APP_STORE_REVIEW_NOTES_PATH:-$repository_root/app-store/review-notes-0.11.0-build-111.md}"
+if [[ -f "$review_notes_path" ]]; then
+  review_detail_response="$(api_request GET "/appStoreVersions/$APP_STORE_VERSION_ID/appStoreReviewDetail")"
+  review_detail_id="$(print -r -- "$review_detail_response" | "$jq_bin" -r '.data.id // empty')"
+  if [[ -z "$review_detail_id" ]]; then
+    print -u2 "Unable to locate the App Store review detail for $APP_STORE_VERSION_ID."
+    failures=$((failures + 1))
+  else
+    payload="$("$jq_bin" -n \
+      --arg id "$review_detail_id" \
+      --rawfile notes "$review_notes_path" \
+      '{data:{type:"appStoreReviewDetails",id:$id,attributes:{notes:($notes|sub("\\n+$";""))}}}')"
+    response="$(api_request PATCH "/appStoreReviewDetails/$review_detail_id" "$payload")"
+    if print -r -- "$response" | "$jq_bin" -e '.errors' >/dev/null 2>&1; then
+      print -u2 "review-notes error: $(print -r -- "$response" | "$jq_bin" -c '.errors')"
+      failures=$((failures + 1))
+    else
+      print "review notes synced"
+    fi
+  fi
+fi
 
 exit "$failures"

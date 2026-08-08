@@ -3,12 +3,13 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 VERSION="$(node -p "require('${PROJECT_ROOT}/package.json').version")"
+BUILD_NUMBER="$(node -p "require('${PROJECT_ROOT}/src-tauri/tauri.app-store.conf.json').bundle.macOS.bundleVersion")"
 BUILD_USER_HOME="$(python3 -c 'from pathlib import Path; print(Path.home())')"
 TARGET="${LINGZHAN_BUILD_TARGET:-universal-apple-darwin}"
-DIST_DIR="${PROJECT_ROOT}/dist/app-store/${VERSION}"
-APP_PATH="${DIST_DIR}/灵栈-${VERSION}-mac-app-store.app"
-PKG_PATH="${DIST_DIR}/灵栈-${VERSION}-mac-app-store.pkg"
-AUDIT_REPORT="${DIST_DIR}/audit/APP_STORE_BUNDLE_AUDIT-${VERSION}.json"
+DIST_DIR="${PROJECT_ROOT}/dist/app-store/${VERSION}-${BUILD_NUMBER}"
+APP_PATH="${DIST_DIR}/灵栈-${VERSION}-${BUILD_NUMBER}-mac-app-store.app"
+PKG_PATH="${DIST_DIR}/灵栈-${VERSION}-${BUILD_NUMBER}-mac-app-store.pkg"
+AUDIT_REPORT="${DIST_DIR}/audit/APP_STORE_BUNDLE_AUDIT-${VERSION}-${BUILD_NUMBER}.json"
 PROFILE_PATH="${PROJECT_ROOT}/src-tauri/profiles/LingStack_Mac_App_Store.provisionprofile"
 RUSTUP_BIN_DIR="$(brew --prefix rustup 2>/dev/null)/bin"
 BUILD_TARGET_DIR="$(mktemp -d "${TMPDIR%/}/lingzhan-store-build.XXXXXX")"
@@ -48,8 +49,11 @@ fi
 export PATH="${RUSTUP_BIN_DIR}:${PATH}"
 export CARGO_TARGET_DIR="${BUILD_TARGET_DIR}"
 export VITE_LINGZHAN_PUBLIC_RELEASE=1
+export VITE_LINGZHAN_APP_STORE=1
 export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=${BUILD_USER_HOME}=/__build_home__"$'\x1f'"--remap-path-prefix=${PROJECT_ROOT}=/__source__"
 cd "${PROJECT_ROOT}"
+
+bash scripts/audit-app-store-china-compliance.sh
 
 npm run tauri build -- \
   --target "${TARGET}" \
@@ -77,6 +81,11 @@ python3 scripts/audit-clean-release.py "${APP_PATH}" \
   --expected-version "${VERSION}" \
   --expected-identifier app.lingzhan.lingstack.store \
   --allow-provisioning-profile \
+  --forbid-text OpenAI \
+  --forbid-text ChatGPT \
+  --forbid-text openai_compatible \
+  --forbid-text api.openai.com \
+  --forbid-text gpt- \
   --forbid "$(id -un)" \
   --forbid "${PROJECT_ROOT}" \
   --report "${AUDIT_REPORT}"

@@ -67,25 +67,25 @@ fn default_profiles() -> Vec<ModelProfile> {
     }]
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(feature = "app-store")))]
 fn keychain_secret(id: &str) -> Option<String> {
     security_framework::passwords::get_generic_password(KEYCHAIN_SERVICE, id)
         .ok()
         .and_then(|bytes| String::from_utf8(bytes).ok())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(feature = "app-store")))]
 fn keychain_secret(_id: &str) -> Option<String> {
     None
 }
 
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(feature = "app-store")))]
 fn store_keychain_secret(id: &str, secret: &str) -> Result<(), String> {
     security_framework::passwords::set_generic_password(KEYCHAIN_SERVICE, id, secret.as_bytes())
         .map_err(|error| format!("无法写入 macOS 钥匙串：{error}"))
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(feature = "app-store")))]
 fn store_keychain_secret(_id: &str, _secret: &str) -> Result<(), String> {
     Err("当前平台暂不支持安全保存模型密钥".to_string())
 }
@@ -109,6 +109,37 @@ fn read_config() -> Result<ControlConfig, String> {
     let bytes = fs::read(&path).map_err(|error| format!("无法读取模型配置：{error}"))?;
     let mut config: ControlConfig =
         serde_json::from_slice(&bytes).map_err(|error| format!("模型配置结构无效：{error}"))?;
+    #[cfg(feature = "app-store")]
+    {
+        let removed_ids = config
+            .profiles
+            .iter()
+            .filter(|profile| !app_store_profile_allowed(profile))
+            .map(|profile| profile.id.clone())
+            .collect::<Vec<_>>();
+        let mut changed = !removed_ids.is_empty();
+        for id in removed_ids {
+            delete_keychain_secret(&id);
+        }
+        config.profiles.retain(app_store_profile_allowed);
+        if config.profiles.is_empty() {
+            config.profiles = default_profiles();
+            changed = true;
+        }
+        for profile in &mut config.profiles {
+            normalize_profile_models(profile);
+            if !profile.api_key_env.is_empty() || profile.credential_stored {
+                changed = true;
+            }
+            profile.api_key_env.clear();
+            profile.credential_stored = false;
+            delete_keychain_secret(&profile.id);
+        }
+        if changed {
+            write_json_atomic(&path, &config)?;
+        }
+    }
+    #[cfg(not(feature = "app-store"))]
     for profile in &mut config.profiles {
         normalize_profile_models(profile);
         profile.credential_stored = keychain_secret(&profile.id).is_some();
@@ -170,6 +201,24 @@ fn normalize_endpoint_input(raw: &str) -> String {
     value
 }
 
+#[cfg(feature = "app-store")]
+fn app_store_profile_allowed(profile: &ModelProfile) -> bool {
+    if profile.provider != "ollama" || !profile.api_key_env.is_empty() {
+        return false;
+    }
+    Url::parse(profile.endpoint.trim())
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_owned))
+        .is_some_and(|host| {
+            host.eq_ignore_ascii_case("localhost")
+                || host
+                    .trim_start_matches('[')
+                    .trim_end_matches(']')
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
+        })
+}
+
 fn write_json_atomic<T: Serialize>(path: &Path, value: &T) -> Result<(), String> {
     let parent = path
         .parent()
@@ -197,6 +246,11 @@ fn validate_profile(profile: &ModelProfile) -> Result<(), String> {
     if profile.name.trim().is_empty() {
         return Err("配置名称不能为空".to_string());
     }
+    #[cfg(feature = "app-store")]
+    if profile.provider != "ollama" {
+        return Err("Mac App Store 版仅支持本机 Ollama".to_string());
+    }
+    #[cfg(not(feature = "app-store"))]
     if profile.provider != "ollama" && profile.provider != "openai_compatible" {
         return Err("当前仅支持 Ollama 与 OpenAI 兼容接口".to_string());
     }
@@ -215,6 +269,10 @@ fn validate_profile(profile: &ModelProfile) -> Result<(), String> {
     }
     if url.host_str().is_none() || url.query().is_some() || url.fragment().is_some() {
         return Err("接口地址必须包含主机，且不能含查询参数或片段".to_string());
+    }
+    #[cfg(feature = "app-store")]
+    if !app_store_profile_allowed(profile) {
+        return Err("Mac App Store 版的模型地址只能使用 localhost 或回环 IP".to_string());
     }
     if !profile.api_key_env.is_empty() {
         let mut chars = profile.api_key_env.chars();
@@ -570,6 +628,17 @@ pub fn save_model_profile(
     if secret.len() > 8192 {
         return Err("模型密钥长度超过安全上限".to_string());
     }
+    #[cfg(feature = "app-store")]
+    if !secret.is_empty() {
+        return Err("Mac App Store 版不接收模型密钥".to_string());
+    }
+    #[cfg(feature = "app-store")]
+    {
+        profile.api_key_env.clear();
+        profile.credential_stored = false;
+        delete_keychain_secret(&profile.id);
+    }
+    #[cfg(not(feature = "app-store"))]
     if !secret.is_empty() {
         store_keychain_secret(&profile.id, &secret)?;
         profile.credential_stored = true;
@@ -721,7 +790,11 @@ pub fn delete_custom_binding(id: String) -> Result<ControlCenterState, String> {
 
 fn endpoint(profile: &ModelProfile, suffix: &str) -> String {
     let mut base = profile.endpoint.trim().trim_end_matches('/');
-    for operation in ["/chat/completions", "/models", "/api/tags", "/api/chat"] {
+    #[cfg(feature = "app-store")]
+    let operations = ["/api/tags", "/api/chat"];
+    #[cfg(not(feature = "app-store"))]
+    let operations = ["/chat/completions", "/models", "/api/tags", "/api/chat"];
+    for operation in operations {
         if base.ends_with(operation) {
             base = base.trim_end_matches(operation).trim_end_matches('/');
             break;
@@ -757,6 +830,7 @@ async fn response_json(response: reqwest::Response) -> Result<Value, String> {
     serde_json::from_slice(&bytes).map_err(|_| "模型服务没有返回有效 JSON".to_string())
 }
 
+#[cfg(not(feature = "app-store"))]
 fn resolve_secret(profile: &ModelProfile, supplied: &str) -> Result<Option<String>, String> {
     if !supplied.is_empty() {
         return Ok(Some(supplied.to_string()));
@@ -775,8 +849,14 @@ fn resolve_secret(profile: &ModelProfile, supplied: &str) -> Result<Option<Strin
     })
 }
 
-fn parse_model_options(value: &Value, provider: &str) -> Result<Vec<ModelOption>, String> {
-    let rows = if provider == "ollama" {
+fn parse_model_options(value: &Value, _provider: &str) -> Result<Vec<ModelOption>, String> {
+    #[cfg(feature = "app-store")]
+    let rows = value
+        .get("models")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "模型服务响应中没有可识别的模型列表".to_string())?;
+    #[cfg(not(feature = "app-store"))]
+    let rows = if _provider == "ollama" {
         value.get("models")
     } else {
         value.get("data")
@@ -823,16 +903,24 @@ pub async fn list_model_options(
     if secret.len() > 8192 {
         return Err("模型密钥长度超过安全上限".to_string());
     }
+    #[cfg(feature = "app-store")]
+    if !secret.is_empty() {
+        return Err("Mac App Store 版不接收模型密钥".to_string());
+    }
     let client = Client::builder()
         .connect_timeout(Duration::from_secs(5))
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|error| format!("无法建立模型客户端：{error}"))?;
+    #[cfg(feature = "app-store")]
+    let request = client.get(endpoint(&profile, "/api/tags"));
+    #[cfg(not(feature = "app-store"))]
     let mut request = if profile.provider == "ollama" {
         client.get(endpoint(&profile, "/api/tags"))
     } else {
         client.get(endpoint(&profile, "/models"))
     };
+    #[cfg(not(feature = "app-store"))]
     if let Some(secret) = resolve_secret(&profile, &secret)? {
         request = request.bearer_auth(secret);
     }
@@ -857,10 +945,75 @@ pub async fn test_model_profile(id: String, inference: bool) -> Result<ModelTest
     if !profile.enabled {
         return Err("该模型配置已停用".to_string());
     }
+    #[cfg(feature = "app-store")]
+    let key = None;
+    #[cfg(not(feature = "app-store"))]
     let key = resolve_secret(&profile, "")?;
     test_profile_connection(profile, key, inference).await
 }
 
+#[cfg(feature = "app-store")]
+async fn test_profile_connection(
+    profile: ModelProfile,
+    _key: Option<String>,
+    inference: bool,
+) -> Result<ModelTestResult, String> {
+    let client = Client::builder()
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(if inference { 20 } else { 8 }))
+        .build()
+        .map_err(|error| format!("无法建立模型客户端：{error}"))?;
+    let started = Instant::now();
+    let request = if inference {
+        client.post(endpoint(&profile, "/api/chat")).json(&json!({
+            "model": profile.model,
+            "messages": [{"role": "user", "content": "Reply with OK only."}],
+            "stream": false,
+            "options": {"num_predict": 4}
+        }))
+    } else {
+        client.get(endpoint(&profile, "/api/tags"))
+    };
+    let value = response_json(
+        request
+            .send()
+            .await
+            .map_err(|error| format!("模型连接失败：{error}"))?,
+    )
+    .await?;
+    let summary = if inference {
+        let content = value
+            .pointer("/message/content")
+            .and_then(Value::as_str)
+            .unwrap_or("推理成功，服务未返回可展示文本");
+        format!(
+            "最小推理成功：{}",
+            content.chars().take(80).collect::<String>()
+        )
+    } else {
+        let count = value
+            .get("models")
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .unwrap_or(0);
+        format!("连接成功，服务报告 {count} 个可见模型")
+    };
+    Ok(ModelTestResult {
+        profile_id: profile.id,
+        mode: if inference {
+            "inference"
+        } else {
+            "connectivity"
+        }
+        .to_string(),
+        status: "success".to_string(),
+        latency_ms: started.elapsed().as_millis(),
+        summary,
+        checked_at: Local::now().to_rfc3339(),
+    })
+}
+
+#[cfg(not(feature = "app-store"))]
 async fn test_profile_connection(
     profile: ModelProfile,
     key: Option<String>,
@@ -1204,6 +1357,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "app-store"))]
     fn model_list_parser_supports_openai_and_ollama_shapes() {
         let openai = parse_model_options(
             &json!({"data": [{"id": "gpt-b", "owned_by": "local"}, {"id": "gpt-a"}]}),
@@ -1230,6 +1384,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "app-store"))]
     fn endpoint_builder_accepts_base_or_full_models_url() {
         let mut profile = default_profiles().remove(0);
         profile.provider = "openai_compatible".to_string();
@@ -1291,6 +1446,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "app-store"))]
     fn model_list_command_fetches_multiple_models_over_real_http() {
         let (endpoint, server) = serve_json_once(
             "GET /v1/models HTTP/1.1",
@@ -1317,6 +1473,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "app-store"))]
     fn model_inference_probe_executes_over_real_http() {
         let (endpoint, server) = serve_json_once(
             "POST /v1/chat/completions HTTP/1.1",
@@ -1333,6 +1490,56 @@ mod tests {
             tauri::async_runtime::block_on(test_profile_connection(profile, None, true)).unwrap();
         assert_eq!(result.status, "success");
         assert!(result.summary.contains("OK"));
+        server.join().unwrap();
+    }
+
+    #[test]
+    #[cfg(feature = "app-store")]
+    fn app_store_profiles_are_local_only_and_credential_free() {
+        for endpoint in [
+            "http://localhost:11434",
+            "http://127.0.0.1:11434",
+            "http://[::1]:11434",
+        ] {
+            let mut profile = default_profiles().remove(0);
+            profile.endpoint = endpoint.to_string();
+            assert!(validate_profile(&profile).is_ok(), "{endpoint}");
+        }
+
+        let mut remote = default_profiles().remove(0);
+        remote.endpoint = "https://models.example.com".to_string();
+        assert!(validate_profile(&remote).is_err());
+
+        let mut credentialed = default_profiles().remove(0);
+        credentialed.api_key_env = "MODEL_KEY".to_string();
+        assert!(validate_profile(&credentialed).is_err());
+
+        let mut unsupported = default_profiles().remove(0);
+        unsupported.provider = "remote-compatible".to_string();
+        assert!(validate_profile(&unsupported).is_err());
+    }
+
+    #[test]
+    #[cfg(feature = "app-store")]
+    fn app_store_model_list_uses_only_the_local_ollama_shape() {
+        let (endpoint, server) = serve_json_once(
+            "GET /v1/api/tags HTTP/1.1",
+            None,
+            r#"{"models":[{"name":"model-b"},{"name":"model-a"}]}"#,
+        );
+        let mut profile = default_profiles().remove(0);
+        profile.endpoint = endpoint;
+        profile.model.clear();
+        profile.models.clear();
+        let options =
+            tauri::async_runtime::block_on(list_model_options(profile, String::new())).unwrap();
+        assert_eq!(
+            options
+                .iter()
+                .map(|item| item.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["model-a", "model-b"]
+        );
         server.join().unwrap();
     }
 }

@@ -13,6 +13,7 @@
     "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
     "release:clean": "bash scripts/build-clean-release.sh",
     "release:app-store": "bash scripts/build-app-store-release.sh",
+    "audit:app-store:china": "bash scripts/audit-app-store-china-compliance.sh",
     "release:clean:audit": "python3 scripts/audit-clean-release.py",
     "ci": "npm run check:i18n && npm run check && npm run build && npm run test:rust"
   },

@@ -1,1 +1,1 @@
-agent,skill,IA,modelos,desenvolvimento,local,validação,prompts,projetos
+agent,skill,desenvolvimento,local,validação,prompts,projetos,versões,ativos

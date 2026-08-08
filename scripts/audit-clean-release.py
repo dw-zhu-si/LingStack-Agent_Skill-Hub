@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--registry", type=Path)
     parser.add_argument("--report", type=Path)
     parser.add_argument("--forbid", action="append", default=[])
+    parser.add_argument("--forbid-text", action="append", default=[])
     parser.add_argument("--expected-version", default="0.11.0")
     parser.add_argument("--expected-identifier", default="app.lingzhan.agent-skill-hub")
     parser.add_argument("--allow-provisioning-profile", action="store_true")
@@ -132,6 +133,11 @@ def audit(args: argparse.Namespace) -> dict[str, object]:
     forbidden.extend(value.encode() for value in args.forbid if value)
     personal_path_matches = sum(1 for marker in forbidden if marker in combined)
     secret_matches = sum(len(pattern.findall(combined)) for pattern in TEXT_SECRET_PATTERNS)
+    lowered_payload = combined.lower()
+    forbidden_text_matches = {
+        value: lowered_payload.count(value.lower().encode()) for value in args.forbid_text
+    }
+    forbidden_text_match_count = sum(forbidden_text_matches.values())
     markers, registry_group_count = registry_markers(args.registry)
     personal_registry_matches = sum(1 for marker in markers if marker in combined)
 
@@ -155,6 +161,8 @@ def audit(args: argparse.Namespace) -> dict[str, object]:
         errors.append("bundle contains identifiers, hashes, or paths from the private registry")
     if secret_matches:
         errors.append("bundle contains a secret-shaped value")
+    if forbidden_text_match_count:
+        errors.append("bundle contains a forbidden public-distribution reference")
 
     result: dict[str, object] = {
         "schema_version": 1,
@@ -171,6 +179,8 @@ def audit(args: argparse.Namespace) -> dict[str, object]:
         "private_registry_match_count": personal_registry_matches,
         "personal_path_match_count": personal_path_matches,
         "secret_shape_match_count": secret_matches,
+        "forbidden_text_match_count": forbidden_text_match_count,
+        "forbidden_text_matches": forbidden_text_matches,
         "unexpected_file_count": len(unexpected_files),
         "missing_file_count": len(missing_files),
         "errors": errors,

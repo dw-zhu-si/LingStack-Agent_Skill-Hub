@@ -4,6 +4,8 @@
   import type { ControlCenterState, ModelOption, ModelProfile, ModelTestResult } from "../types";
   import { locale, tr } from "../i18n";
 
+  const appStoreEdition = import.meta.env.VITE_LINGZHAN_APP_STORE === "1";
+
   let { controlState, setState, reportError }: {
     controlState: ControlCenterState;
     setState: (state: ControlCenterState) => void;
@@ -47,12 +49,12 @@
   function newProfile() {
     editing = {
       id: `model-${Date.now()}`,
-      name: "OpenAI Compatible",
-      provider: "openai_compatible",
-      endpoint: "https://api.openai.com/v1",
+      name: appStoreEdition ? "Local Ollama" : "OpenAI Compatible",
+      provider: appStoreEdition ? "ollama" : "openai_compatible",
+      endpoint: appStoreEdition ? "http://127.0.0.1:11434" : "https://api.openai.com/v1",
       model: "",
       models: [],
-      api_key_env: "OPENAI_API_KEY",
+      api_key_env: appStoreEdition ? "" : "OPENAI_API_KEY",
       enabled: true,
       credential_stored: false
     };
@@ -72,7 +74,7 @@
     try {
       prepareEndpoint();
       if (editing.models.length === 0 && editing.model.trim()) editing.models = [editing.model.trim()];
-      setState(await saveModelProfile(editing, secret));
+      setState(await saveModelProfile(editing, appStoreEdition ? "" : secret));
       secret = "";
       editing = null;
     } catch (reason) { reportError(reason); }
@@ -84,7 +86,7 @@
     loadingModels = true;
     try {
       prepareEndpoint();
-      modelOptions = await listModelOptions(editing, secret);
+      modelOptions = await listModelOptions(editing, appStoreEdition ? "" : secret);
       if (modelOptions.length === 0) throw new Error(tr("model.notSelected", {}, $locale));
       editing.models = modelOptions.map((option) => option.id);
       if (!modelOptions.some((option) => option.id === editing?.model)) editing.model = modelOptions[0].id;
@@ -154,7 +156,7 @@
     <ul class="boundary-list">
       <li><strong>{tr("model.connect", {}, $locale)}</strong><span>{tr("controls.safety", {}, $locale)}</span></li>
       <li><strong>{tr("model.inference", {}, $locale)}</strong><span>{tr("common.confirm", {}, $locale)}</span></li>
-      <li><strong>{tr("model.apiKey", {}, $locale)}</strong><span>{tr("controls.safety", {}, $locale)}</span></li>
+      {#if !appStoreEdition}<li><strong>{tr("model.apiKey", {}, $locale)}</strong><span>{tr("controls.safety", {}, $locale)}</span></li>{/if}
     </ul>
   </aside>
 </section>
@@ -164,7 +166,7 @@
     <form class="control-modal" autocomplete="off" onsubmit={(event) => { event.preventDefault(); saveProfile(); }}>
       <header><div><span class="section-kicker">MODEL PROFILE</span><h2>{tr("model.profile", {}, $locale)}</h2></div><button type="button" onclick={() => (editing = null)}>{tr("common.cancel", {}, $locale)}</button></header>
       <label><span>{tr("model.displayName", {}, $locale)}</span><input bind:value={editing.name} required autocomplete="off" /></label>
-      <label><span>{tr("model.interfaceType", {}, $locale)}</span><select bind:value={editing.provider}><option value="openai_compatible">OpenAI</option><option value="ollama">Ollama</option></select></label>
+      <label><span>{tr("model.interfaceType", {}, $locale)}</span><select bind:value={editing.provider} disabled={appStoreEdition}>{#if !appStoreEdition}<option value="openai_compatible">OpenAI</option>{/if}<option value="ollama">Ollama</option></select></label>
       <label><span>{tr("model.endpoint", {}, $locale)}</span><input bind:value={editing.endpoint} type="text" inputmode="url" required autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11435/v1" onblur={() => { if (editing) editing.endpoint = normalizeEndpoint(editing.endpoint); void autoFetchModels(); }} /></label>
       <div class="model-picker-heading"><span>{tr("model.catalog", {}, $locale)}</span><button type="button" disabled={loadingModels} onclick={fetchModels}><Download size={14} />{tr(loadingModels ? "model.fetching" : "model.fetch", {}, $locale)}</button></div>
       {#if modelOptions.length > 0}
@@ -178,8 +180,10 @@
       {:else}
         <input class="model-picker" bind:value={editing.model} placeholder={tr("model.fetch", {}, $locale)} required autocomplete="off" spellcheck="false" />
       {/if}
-      <label><span>{tr("model.apiKey", {}, $locale)}</span><input type="password" bind:value={secret} autocomplete="new-password" spellcheck="false" onblur={() => void autoFetchModels()} /></label>
-      <label><span>{tr("model.envName", {}, $locale)}</span><input bind:value={editing.api_key_env} placeholder="OPENAI_API_KEY" pattern="[A-Z_][A-Z0-9_]*" autocomplete="off" spellcheck="false" /></label>
+      {#if !appStoreEdition}
+        <label><span>{tr("model.apiKey", {}, $locale)}</span><input type="password" bind:value={secret} autocomplete="new-password" spellcheck="false" onblur={() => void autoFetchModels()} /></label>
+        <label><span>{tr("model.envName", {}, $locale)}</span><input bind:value={editing.api_key_env} placeholder="OPENAI_API_KEY" pattern="[A-Z_][A-Z0-9_]*" autocomplete="off" spellcheck="false" /></label>
+      {/if}
       <label class="inline-check"><input type="checkbox" bind:checked={editing.enabled} /><span>{tr("common.enabled", {}, $locale)}</span></label>
       <button class="primary-button" disabled={busy === editing.id}><Save size={15} />{tr("model.save", {}, $locale)}</button>
     </form>

@@ -1,1 +1,1 @@
-Agent,Skill,KI,Modelle,Entwicklung,lokal,Prüfung,Prompts,Projekte
+Agent,Skill,Entwicklung,lokal,Prüfung,Prompts,Projekte,Versionen,Assets

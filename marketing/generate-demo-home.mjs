@@ -158,28 +158,6 @@ const controlCenter = {
       api_key_env: "",
       enabled: true,
       credential_stored: false
-    },
-    {
-      id: "openai-compatible",
-      name: "OpenAI Compatible",
-      provider: "openai_compatible",
-      endpoint: "https://api.example.com/v1",
-      model: "gpt-5",
-      models: ["gpt-5", "gpt-5-mini", "o4-mini"],
-      api_key_env: "MODEL_PROVIDER_KEY",
-      enabled: true,
-      credential_stored: false
-    },
-    {
-      id: "team-gateway",
-      name: "Team Gateway",
-      provider: "openai_compatible",
-      endpoint: "https://models.example.com/v1",
-      model: "coder-large",
-      models: ["claude-sonnet", "gemini-pro", "coder-large"],
-      api_key_env: "TEAM_MODEL_KEY",
-      enabled: true,
-      credential_stored: false
     }
   ],
   custom_bindings: []

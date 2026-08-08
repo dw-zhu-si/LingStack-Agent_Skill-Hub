@@ -1,5 +1,5 @@
-LingStack est un centre local-first pour les Agents et Skills. Il découvre les définitions réparties entre vos outils de programmation IA et vos projets, puis les organise par source, empreinte, version et relation de projet.
+LingStack est un centre local-first pour les Agents et Skills. Il découvre les définitions réparties entre vos outils de développement et vos projets, puis les organise par source, empreinte, version et relation de projet.
 
-Gérez les interfaces Ollama et compatibles OpenAI, récupérez plusieurs modèles disponibles et effectuez séparément les tests de connexion et d’inférence minimale. LingStack propose aussi des audits structurels en lecture seule, des suggestions d’optimisation, la gestion des conflits de version et des exports propres.
+LingStack propose des audits structurels en lecture seule, des suggestions d’optimisation, la gestion des conflits de version, des états traçables et des exports propres.
 
 Les changements de chemins, choix de version, confirmations de licence et promotions ne sont jamais automatiques : ils nécessitent toujours une action explicite. La version publique n’intègre aucun Agent ou Skill personnel.

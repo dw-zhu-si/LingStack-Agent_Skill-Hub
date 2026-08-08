@@ -1,5 +1,5 @@
-LingStack é um hub local-first para Agents e Skills. Ele encontra definições distribuídas entre ferramentas de programação com IA e projetos, organizando tudo por origem, hash, versão e relação com o projeto.
+LingStack é um hub local-first para Agents e Skills. Ele encontra definições distribuídas entre ferramentas de desenvolvimento e projetos, organizando tudo por origem, hash, versão e relação com o projeto.
 
-Gerencie endpoints Ollama e compatíveis com OpenAI, obtenha vários modelos disponíveis e execute separadamente testes de conexão e inferência mínima. O app também oferece auditorias estruturais somente leitura, sugestões de otimização, tratamento de conflitos de versão e exportações limpas.
+O app também oferece auditorias estruturais somente leitura, sugestões de otimização, tratamento de conflitos de versão, estados rastreáveis e exportações limpas.
 
 Mudanças de caminhos, seleção de versão, confirmação de licença e promoção nunca são automáticas: sempre exigem uma ação explícita. A versão pública não inclui Agents ou Skills pessoais.
