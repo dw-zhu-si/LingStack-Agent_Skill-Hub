@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root = dirname(fileURLToPath(import.meta.url));
 const common = {
   privacy_url: "https://pm.jcm99.com/apple/lingstack/privacy.html",
-  support_url: "https://pm.jcm99.com/apple/lingstack/support.html",
+  support_url: "https://github.com/dw-zhu-si/LingStack-Agent_Skill-Hub/blob/main/SUPPORT.md",
   marketing_url: "https://pm.jcm99.com/apple/lingstack/"
 };
 

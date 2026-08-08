@@ -557,7 +557,7 @@
           {tr("common.privacyPolicy", {}, $locale)}
         </button>
         <span aria-hidden="true">·</span>
-        <button onclick={() => openUrl("https://pm.jcm99.com/apple/lingstack/support.html")}>
+        <button onclick={() => openUrl("https://github.com/dw-zhu-si/LingStack-Agent_Skill-Hub/blob/main/SUPPORT.md")}>
           {tr("common.support", {}, $locale)}
         </button>
       </div>

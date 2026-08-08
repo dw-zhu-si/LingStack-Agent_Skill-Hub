@@ -9,7 +9,7 @@
   <a href="https://github.com/dw-zhu-si/LingStack-Agent_Skill-Hub/releases">Download</a> ·
   <a href="https://pm.jcm99.com/apple/lingstack/">Product page</a> ·
   <a href="https://pm.jcm99.com/apple/lingstack/privacy.html">Privacy</a> ·
-  <a href="https://pm.jcm99.com/apple/lingstack/support.html">Support</a>
+  <a href="SUPPORT.md">Support</a>
 </p>
 
 ![LingStack product overview](marketing/store-preview/output/zh-CN/01-lingstack.png)
