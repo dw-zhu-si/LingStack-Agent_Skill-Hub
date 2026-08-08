@@ -1187,6 +1187,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "app-store"))]
     fn merge_preflight_accepts_identical_files_and_rejects_conflicts() {
         let root =
             std::env::temp_dir().join(format!("lingzhan-control-test-{}", std::process::id()));
