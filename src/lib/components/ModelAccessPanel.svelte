@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { CheckCircle2, Download, FlaskConical, KeyRound, Plus, Save, Trash2, Wifi } from "@lucide/svelte";
   import { clearModelCredential, deleteModelProfile, listModelOptions, saveModelProfile, testModelProfile } from "../api";
   import type { ControlCenterState, ModelOption, ModelProfile, ModelTestResult } from "../types";
@@ -17,6 +18,23 @@
   let secret = $state("");
   let modelOptions = $state<ModelOption[]>([]);
   let loadingModels = $state(false);
+  let modelRequest = 0;
+  let saveRequest = 0;
+  let disposed = false;
+  onDestroy(() => { disposed = true; modelRequest += 1; saveRequest += 1; });
+
+  function cancelEditing() {
+    modelRequest += 1;
+    loadingModels = false;
+    editing = null;
+    secret = "";
+    modelOptions = [];
+  }
+
+  function connectionKey(profile: ModelProfile, credential: string): string {
+    return JSON.stringify([profile.id, profile.endpoint, profile.provider, profile.api_key_env, credential]);
+  }
+
 
   function normalizeEndpoint(value: string) {
     const trimmed = value.trim().replaceAll("，", ",");
@@ -47,6 +65,7 @@
   }
 
   function newProfile() {
+    cancelEditing();
     editing = {
       id: `model-${Date.now()}`,
       name: appStoreEdition ? "Local Ollama" : "OpenAI Compatible",
@@ -63,35 +82,54 @@
   }
 
   function editProfile(profile: ModelProfile) {
-    editing = { ...profile, models: selectedModels(profile) };
+    cancelEditing();
+    editing = { ...profile, models: [...selectedModels(profile)] };
     secret = "";
     modelOptions = profile.model ? [{ id: profile.model, label: profile.model }] : [];
   }
 
   async function saveProfile() {
     if (!editing) return;
-    busy = editing.id;
+    const session = editing;
+    const request = ++saveRequest;
+    busy = session.id;
     try {
       prepareEndpoint();
-      if (editing.models.length === 0 && editing.model.trim()) editing.models = [editing.model.trim()];
-      setState(await saveModelProfile(editing, appStoreEdition ? "" : secret));
-      secret = "";
-      editing = null;
-    } catch (reason) { reportError(reason); }
-    finally { busy = ""; }
+      const snapshot = { ...session, models: [...session.models] };
+      if (snapshot.models.length === 0 && snapshot.model.trim()) snapshot.models = [snapshot.model.trim()];
+      const state = await saveModelProfile(snapshot, appStoreEdition ? "" : secret);
+      if (disposed || request !== saveRequest) return;
+      setState(state);
+      if (editing === session) cancelEditing();
+    } catch (reason) {
+      if (!disposed && request === saveRequest && editing === session) reportError(reason);
+    } finally {
+      if (!disposed && request === saveRequest) busy = "";
+    }
   }
 
   async function fetchModels() {
     if (!editing) return;
+    const session = editing;
+    const request = ++modelRequest;
     loadingModels = true;
     try {
       prepareEndpoint();
-      modelOptions = await listModelOptions(editing, appStoreEdition ? "" : secret);
-      if (modelOptions.length === 0) throw new Error(tr("model.notSelected", {}, $locale));
-      editing.models = modelOptions.map((option) => option.id);
-      if (!modelOptions.some((option) => option.id === editing?.model)) editing.model = modelOptions[0].id;
-    } catch (reason) { reportError(reason); }
-    finally { loadingModels = false; }
+      const snapshot = { ...session, models: [...session.models] };
+      const credential = appStoreEdition ? "" : secret;
+      const key = connectionKey(snapshot, credential);
+      const options = await listModelOptions(snapshot, credential);
+      if (disposed || request !== modelRequest || editing !== session
+        || key !== connectionKey(session, appStoreEdition ? "" : secret)) return;
+      if (options.length === 0) throw new Error(tr("model.notSelected", {}, $locale));
+      modelOptions = options;
+      session.models = options.map((option) => option.id);
+      if (!options.some((option) => option.id === session.model)) session.model = options[0].id;
+    } catch (reason) {
+      if (!disposed && request === modelRequest && editing === session) reportError(reason);
+    } finally {
+      if (!disposed && request === modelRequest) loadingModels = false;
+    }
   }
 
   async function autoFetchModels() {
@@ -164,7 +202,7 @@
 {#if editing}
   <div class="control-modal-backdrop" role="presentation">
     <form class="control-modal" autocomplete="off" onsubmit={(event) => { event.preventDefault(); saveProfile(); }}>
-      <header><div><span class="section-kicker">MODEL PROFILE</span><h2>{tr("model.profile", {}, $locale)}</h2></div><button type="button" onclick={() => (editing = null)}>{tr("common.cancel", {}, $locale)}</button></header>
+      <header><div><span class="section-kicker">MODEL PROFILE</span><h2>{tr("model.profile", {}, $locale)}</h2></div><button type="button" onclick={cancelEditing}>{tr("common.cancel", {}, $locale)}</button></header>
       <label><span>{tr("model.displayName", {}, $locale)}</span><input bind:value={editing.name} required autocomplete="off" /></label>
       <label><span>{tr("model.interfaceType", {}, $locale)}</span><select bind:value={editing.provider} disabled={appStoreEdition}>{#if !appStoreEdition}<option value="openai_compatible">OpenAI</option>{/if}<option value="ollama">Ollama</option></select></label>
       <label><span>{tr("model.endpoint", {}, $locale)}</span><input bind:value={editing.endpoint} type="text" inputmode="url" required autocomplete="off" spellcheck="false" placeholder="http://127.0.0.1:11435/v1" onblur={() => { if (editing) editing.endpoint = normalizeEndpoint(editing.endpoint); void autoFetchModels(); }} /></label>

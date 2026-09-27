@@ -24,9 +24,15 @@ Public releases intentionally contain no personal assets. Add a folder with the 
 
 ### A model list cannot be retrieved / 无法获取模型列表
 
-Confirm that the endpoint is reachable, the URL is valid, and the credential can list models. Connectivity checks and minimal inference checks are separate actions. Never post credentials in an Issue.
+The Mac App Store edition supports only Ollama running on this Mac at localhost or a loopback address, without model credentials. Confirm that Ollama is running and has a local model installed. The GitHub edition also supports configured model endpoints; check their URL and authorization. Connectivity checks and minimal inference checks are separate actions. Never post credentials in an Issue.
 
-请确认接口可访问、URL 有效，并且凭证具备列出模型的权限。连接检查与最小推理验真是两个独立操作；请勿在 Issue 中公开凭证。
+Mac App Store 版仅支持本机 localhost 或回环地址上的 Ollama，不使用模型凭证。请确认 Ollama 已运行并安装本地模型。GitHub 版也支持自行配置模型接口，请检查 URL 和授权。连接检查与最小推理验真是两个独立操作；请勿在 Issue 中公开凭证。
+
+### Which asset version should I choose? / 多个资产版本如何选择
+
+Open the asset details and read both versions in the comparison panel. The selection helper explains its suggestion using the registered source, current selection, and valid verification records. A matching source is not proof of compatibility, and a longer or newer definition is not necessarily better. When evidence is insufficient, the helper does not choose a version. Its button only fills the candidate field; review and confirm the choice separately.
+
+打开资产详情，在对比面板读取两个版本。“帮我选择”会结合登记来源、当前选择和有效验证记录解释建议。来源匹配不等于兼容性已验证，内容更长或更新也不代表更好。证据不足时不会指定版本。建议按钮只预填候选，仍需你检查并单独确认。
 
 ### Tool paths are not changed automatically / 工具路径不会自动切换
 

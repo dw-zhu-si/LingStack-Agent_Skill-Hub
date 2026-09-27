@@ -1,7 +1,7 @@
 {
   "name": "agent-skill-hub",
   "private": true,
-  "version": "0.11.0",
+  "version": "0.12.0",
   "type": "module",
   "description": "LingStack: a local-first Agent and Skill management hub",
   "scripts": {
@@ -15,7 +15,9 @@
     "release:app-store": "bash scripts/build-app-store-release.sh",
     "audit:app-store:china": "bash scripts/audit-app-store-china-compliance.sh",
     "release:clean:audit": "python3 scripts/audit-clean-release.py",
-    "ci": "npm run check:i18n && npm run check && npm run build && npm run test:rust"
+    "ci": "npm run check:i18n && npm run check && npm run test:comparison && npm run test:decisions && npm run build && npm run test:rust",
+    "test:comparison": "node --experimental-strip-types --test scripts/variant-comparison.test.mjs",
+    "test:decisions": "node --experimental-strip-types --test scripts/variant-decision.test.mjs scripts/asset-state.test.mjs"
   },
   "dependencies": {
     "@lucide/svelte": "^1.16.0",

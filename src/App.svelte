@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import { save } from "@tauri-apps/plugin-dialog";
   import { openUrl } from "@tauri-apps/plugin-opener";
   import {
@@ -26,6 +26,9 @@
     X
   } from "@lucide/svelte";
   import ExportCenter from "./lib/components/ExportCenter.svelte";
+  import DefinitionPreview from "./lib/components/DefinitionPreview.svelte";
+  import VariantComparison from "./lib/components/VariantComparison.svelte";
+  import { hasValidVerification, assetVersionKey } from "./lib/assetState";
   import AssetExplorer from "./lib/components/AssetExplorer.svelte";
   import AssetGovernancePanel from "./lib/components/AssetGovernancePanel.svelte";
   import EvolutionWorkbench from "./lib/components/EvolutionWorkbench.svelte";
@@ -80,7 +83,10 @@
   let loading = true;
   let error = "";
   let query = "";
+  let projectFilter = "";
   let selectedAsset: AssetGroup | null = null;
+  let selectedDefinitionHash = "";
+  let candidateRequest = 0;
   let selectedIds = new Set<string>();
   let refreshing = false;
   let refreshResult: RefreshResult | null = null;
@@ -173,7 +179,7 @@
   function lifecycleTone(asset: AssetGroup): "good" | "warn" | "neutral" | "danger" {
     const governance = governanceById.get(asset.logical_id);
     if (governance?.pending_refresh) return "warn";
-    if (governance?.verification) return "good";
+    if (hasValidVerification(asset, governance)) return "good";
     if ((asset.ready_versions?.length ?? 0) > 0) return "good";
     if (asset.variants.length > 1) return "warn";
     if ((asset.lifecycle_state ?? "").includes("隔离")) return "danger";
@@ -183,7 +189,7 @@
   function lifecycleLabel(asset: AssetGroup): string {
     const governance = governanceById.get(asset.logical_id);
     if (governance?.pending_refresh) return tr("assets.optimizedPending", {}, $locale);
-    if (governance?.verification) return tr("assets.verified", {}, $locale);
+    if (hasValidVerification(asset, governance)) return tr("assets.verified", {}, $locale);
     if ((asset.ready_versions?.length ?? 0) > 0) return tr("assets.ready", {}, $locale);
     if (governance?.selected_sha256 && asset.variants.length > 1) return tr("assets.selectedPending", {}, $locale);
     if (governance?.license) return tr("assets.licensePending", {}, $locale);
@@ -203,7 +209,8 @@
   }
 
   function showProjectAssets(project: string) {
-    query = project;
+    query = "";
+    projectFilter = project;
     goTo("assets");
   }
 
@@ -236,7 +243,7 @@
   }
 
   function manageSelection() {
-    const candidate = selectedGroups.find((asset) => !governanceById.get(asset.logical_id)?.verification) ?? selectedGroups[0];
+    const candidate = selectedGroups.find((asset) => !hasValidVerification(asset, governanceById.get(asset.logical_id))) ?? selectedGroups[0];
     if (candidate) {
       openAsset(candidate);
       showToast(`已打开“${candidate.name}”的认证/选版/优化工作流`);
@@ -456,7 +463,8 @@
     return true;
   }
 
-  function openAsset(asset: AssetGroup) {
+  function openAsset(asset: AssetGroup, preferredHash = "") {
+    selectedDefinitionHash = preferredHash;
     selectedAsset = asset;
   }
 
@@ -824,6 +832,7 @@
           </section>
         {:else if currentView === "assets"}
           <AssetExplorer
+            bind:projectFilter
             {groups}
             {query}
             {selectedIds}
@@ -894,6 +903,21 @@
         <span class="license-chip">{governanceById.get(selectedAsset.logical_id)?.license?.decision || selectedAsset.license || tr("status.licensePending", {}, $locale)}</span>
       </div>
 
+      {#if selectedAsset.variants.length > 1}
+        <VariantComparison
+          asset={selectedAsset}
+          record={governanceById.get(selectedAsset.logical_id)}
+          onChoose={async (sha) => {
+            selectedDefinitionHash = sha;
+            candidateRequest += 1;
+            await tick();
+            const candidate = document.querySelector<HTMLInputElement>("#asset-governance-candidate input:checked");
+            candidate?.scrollIntoView({ block: "center" });
+            candidate?.focus({ preventScroll: true });
+          }}
+        />
+      {/if}
+
       <section>
         <h2>{tr("drawer.usage", {}, $locale)}</h2>
         <p>{selectedAsset.usage || tr("drawer.usageFallback", {}, $locale)}</p>
@@ -948,12 +972,19 @@
         {/if}
       </section>
 
+      <DefinitionPreview asset={selectedAsset} preferredHash={selectedDefinitionHash} />
+
+
+      {#key assetVersionKey(selectedAsset)}
       <AssetGovernancePanel
         asset={selectedAsset}
+        preferredHash={selectedDefinitionHash}
+        preferenceRevision={candidateRequest}
         record={governanceById.get(selectedAsset.logical_id)}
         onUpdated={updateGovernance}
         {reportError}
       />
+      {/key}
     </div>
     <footer>
       <label class="checkbox action-check">

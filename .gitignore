@@ -17,3 +17,11 @@ src-tauri/gen/
 exports/
 coverage/
 marketing/raw/
+
+# Local installers and rollback bundles
+artifacts/releases/
+
+# Machine-local collaboration and development receipts
+/AGENTS.md
+/.trae/
+/docs/development/

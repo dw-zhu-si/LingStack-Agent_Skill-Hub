@@ -14,9 +14,16 @@
   let running = $state(false);
   let query = $state("");
   let expanded = $state("");
+  const PAGE_SIZE = 80;
+  let page = $state(1);
   let filtered = $derived((result?.reports ?? []).filter((report) => `${report.name} ${report.kind}`.toLowerCase().includes(query.toLowerCase())));
 
+  let totalPages = $derived(Math.max(1, Math.ceil(filtered.length / PAGE_SIZE)));
+  let currentPage = $derived(Math.min(page, totalPages));
+  let visibleReports = $derived(filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE));
+
   async function run(deep: boolean) {
+    page = 1;
     running = true;
     try { result = await runAssetAudit([], deep); }
     catch (reason) { reportError(reason); }
@@ -40,11 +47,11 @@
 </section>
 
 <section class="panel audit-panel">
-  <header class="control-panel-heading audit-heading"><div><span class="section-kicker">LOWEST SCORE FIRST</span><h2>{tr("projects.attention", {}, $locale)}</h2></div><input bind:value={query} placeholder={tr("common.search", {}, $locale)} /></header>
+  <header class="control-panel-heading audit-heading"><div><span class="section-kicker">LOWEST SCORE FIRST</span><h2>{tr("projects.attention", {}, $locale)}</h2></div><input bind:value={query} oninput={() => (page = 1)} placeholder={tr("common.search", {}, $locale)} /></header>
   {#if running}<div class="control-loading">{tr("common.loading", {}, $locale)} {formatLocaleNumber(groups.length, $locale)}</div>
   {:else if result}
     <div class="audit-list">
-      {#each filtered.slice(0, 80) as report}
+      {#each visibleReports as report}
         <article class:open={expanded === report.logical_id}>
           <button class="audit-row" onclick={() => (expanded = expanded === report.logical_id ? "" : report.logical_id)}>
             <span class="audit-score {report.status}">{report.score}</span>
@@ -60,6 +67,12 @@
         </article>
       {/each}
     </div>
+    <nav class="table-pagination" aria-label={tr("common.page", { current: currentPage, total: totalPages }, $locale)}>
+      <span>{tr("explorer.range", { from: filtered.length ? (currentPage - 1) * PAGE_SIZE + 1 : 0, to: Math.min(currentPage * PAGE_SIZE, filtered.length), total: filtered.length }, $locale)}</span>
+      <button class="secondary-button small" disabled={currentPage <= 1} onclick={() => (page = currentPage - 1)}>{tr("common.previous", {}, $locale)}</button>
+      <span>{tr("common.page", { current: currentPage, total: totalPages }, $locale)}</span>
+      <button class="secondary-button small" disabled={currentPage >= totalPages} onclick={() => (page = currentPage + 1)}>{tr("common.next", {}, $locale)}</button>
+    </nav>
     {#if result.truncated}<p class="audit-footnote">{tr("common.items", { count: 240 }, $locale)} · {tr("audit.optimize", {}, $locale)}</p>{/if}
   {/if}
 </section>

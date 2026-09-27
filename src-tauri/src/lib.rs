@@ -1,4 +1,5 @@
 mod control;
+mod definition;
 mod export;
 mod governance;
 mod registry;
@@ -15,6 +16,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             registry::inspect_inventory,
+            definition::read_asset_definition,
+            definition::search_asset_definitions,
             registry::load_inventory,
             registry::refresh_inventory,
             relations::resolve_agent_skills,

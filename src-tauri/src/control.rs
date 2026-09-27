@@ -445,6 +445,8 @@ pub(crate) fn local_asset_roots() -> Result<Vec<(String, String, PathBuf)>, Stri
     // Vendor/package locations are discovery-only. They are not path-switch targets, so a
     // manual refresh can find them without offering to rewrite vendor-managed directories.
     for (tool, root) in [
+        ("Agent Skills (shared)", home.join(".agents/skills")),
+        ("Antigravity", home.join(".gemini/config/skills")),
         ("Codex 插件", home.join(".codex/plugins/cache")),
         ("Trae CN 内置 Skill", home.join(".trae-cn/builtin_skills")),
         ("Trae CN 设计库", home.join(".trae-cn/design_libraries")),
@@ -1419,7 +1421,17 @@ mod tests {
         use std::io::{Read, Write};
         use std::net::TcpListener;
 
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let variable = if expected_request_line.starts_with("GET ") {
+            "LINGSTACK_TEST_LIST_PORT"
+        } else {
+            "LINGSTACK_TEST_INFERENCE_PORT"
+        };
+        let port: u16 = std::env::var(variable)
+            .unwrap_or_else(|_| panic!("Reserve a project test port and set {variable}"))
+            .parse()
+            .expect("test port must be a u16");
+        assert_ne!(port, 0, "automatic port allocation is disabled");
+        let listener = TcpListener::bind(("127.0.0.1", port)).unwrap();
         let endpoint = format!("http://{}/v1", listener.local_addr().unwrap());
         let handle = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().unwrap();
@@ -1447,6 +1459,7 @@ mod tests {
 
     #[test]
     #[cfg(not(feature = "app-store"))]
+    #[ignore = "requires explicitly reserved LINGSTACK_TEST_LIST_PORT / LINGSTACK_TEST_INFERENCE_PORT"]
     fn model_list_command_fetches_multiple_models_over_real_http() {
         let (endpoint, server) = serve_json_once(
             "GET /v1/models HTTP/1.1",
@@ -1474,6 +1487,7 @@ mod tests {
 
     #[test]
     #[cfg(not(feature = "app-store"))]
+    #[ignore = "requires explicitly reserved LINGSTACK_TEST_LIST_PORT / LINGSTACK_TEST_INFERENCE_PORT"]
     fn model_inference_probe_executes_over_real_http() {
         let (endpoint, server) = serve_json_once(
             "POST /v1/chat/completions HTTP/1.1",
@@ -1521,6 +1535,7 @@ mod tests {
 
     #[test]
     #[cfg(feature = "app-store")]
+    #[ignore = "requires explicitly reserved LINGSTACK_TEST_LIST_PORT"]
     fn app_store_model_list_uses_only_the_local_ollama_shape() {
         let (endpoint, server) = serve_json_once(
             "GET /v1/api/tags HTTP/1.1",

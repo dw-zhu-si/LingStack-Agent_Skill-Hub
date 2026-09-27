@@ -201,3 +201,18 @@ export async function applyOptimizationDraft(logicalId: string, draftId: string)
     confirmation: `APPLY_OPTIMIZATION:${logicalId}:${draftId}`
   });
 }
+
+/** Definition reads require the desktop's validated registry paths. */
+export function supportsDefinitionReads(): boolean {
+  return typeof window !== "undefined" && isTauri();
+}
+
+export async function readAssetDefinition(logicalId: string, sha256: string): Promise<import("./types").AssetDefinition> {
+  if (!supportsDefinitionReads()) throw new Error("definition.desktopRequired");
+  return invoke("read_asset_definition", { logicalId, sha256 });
+}
+
+export async function searchAssetDefinitions(query: string): Promise<import("./types").DefinitionSearchResult> {
+  if (!supportsDefinitionReads()) throw new Error("definition.desktopRequired");
+  return invoke("search_asset_definitions", { query });
+}

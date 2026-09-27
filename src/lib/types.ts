@@ -272,3 +272,20 @@ export interface AssetGovernanceRecord {
 }
 
 export type ViewId = "overview" | "assets" | "projects" | "updates" | "controls" | "exports";
+
+export interface AssetDefinition {
+  logical_id: string;
+  sha256: string;
+  path: string;
+  content: string;
+  byte_count: number;
+  line_count: number;
+  estimated_tokens: number;
+}
+
+export interface DefinitionSearchResult {
+  matches: Array<{ logical_id: string; sha256: string; path: string; snippet: string }>;
+  scanned_files: number;
+  skipped_files: number;
+  truncated: boolean;
+}

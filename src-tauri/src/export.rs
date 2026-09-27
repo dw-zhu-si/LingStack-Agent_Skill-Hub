@@ -1,10 +1,11 @@
+use crate::definition::open_without_links;
 use crate::registry::read_registry;
 use crate::relations::resolve_agent_skills_from_registry;
 use crate::types::{AssetGroup, ExportRelationship, ExportResult, Registry};
 use chrono::Local;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
@@ -467,6 +468,57 @@ fn write_markdown(
         .map_err(|error| format!("无法写入 {}：{error}", destination.display()))
 }
 
+// Read verified definition bytes once; the archive receives this exact snapshot.
+fn definition_snapshots(groups: &[AssetGroup]) -> Result<HashMap<PathBuf, Vec<u8>>, String> {
+    let mut snapshots = HashMap::new();
+    let mut total = 0_u64;
+    for group in groups {
+        for variant in &group.variants {
+            if variant.locations.is_empty() {
+                return Err("导出版本没有定义位置".into());
+            }
+            for location in &variant.locations {
+                let mut path = PathBuf::from(&location.path);
+                if is_skill(group) && path.is_dir() {
+                    path.push("SKILL.md");
+                }
+                // Open the uncanonicalized path first, rejecting links in every component.
+                let file = open_without_links(&path)?;
+                let path = fs::canonicalize(&path)
+                    .map_err(|_| "导出定义不可访问，请刷新资产库".to_string())?;
+                if !file.metadata().map_err(|e| e.to_string())?.is_file() {
+                    return Err("导出定义不是普通文件".into());
+                }
+                let mut bytes = Vec::new();
+                file.take(MAX_FILE_BYTES + 1)
+                    .read_to_end(&mut bytes)
+                    .map_err(|e| e.to_string())?;
+                if bytes.len() as u64 > MAX_FILE_BYTES {
+                    return Err("导出定义超过大小上限".into());
+                }
+                if format!("{:x}", Sha256::digest(&bytes)) != variant.sha256 {
+                    return Err("导出定义已偏离登记 SHA-256，请刷新资产库后重新选择版本".into());
+                }
+                if let std::collections::hash_map::Entry::Vacant(entry) = snapshots.entry(path) {
+                    total += bytes.len() as u64;
+                    if total > MAX_BUNDLE_BYTES {
+                        return Err("导出定义超过总容量上限".into());
+                    }
+                    entry.insert(bytes);
+                }
+            }
+        }
+    }
+    Ok(snapshots)
+}
+
+struct BundleTemporary(PathBuf);
+impl Drop for BundleTemporary {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.0);
+    }
+}
+
 fn write_bundle(
     destination: &Path,
     registry: &Registry,
@@ -475,9 +527,27 @@ fn write_bundle(
     relationships: &[ExportRelationship],
     warnings: &[String],
 ) -> Result<(usize, Vec<String>), String> {
+    let snapshots = definition_snapshots(groups)?;
     let (candidates, skipped) = collect_candidate_files(groups);
-    let output = File::create(destination)
-        .map_err(|error| format!("无法创建导出包 {}：{error}", destination.display()))?;
+    let included_paths: HashSet<_> = candidates
+        .iter()
+        .map(|candidate| &candidate.source)
+        .collect();
+    if snapshots.keys().any(|path| !included_paths.contains(path)) {
+        return Err("导出策略排除了已登记定义，拒绝交付不完整版本包".into());
+    }
+    static NEXT_EXPORT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+    let temporary = destination.with_file_name(format!(
+        ".lingstack-export-{}-{}.tmp",
+        std::process::id(),
+        NEXT_EXPORT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let output = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temporary)
+        .map_err(|error| format!("无法创建临时导出包：{error}"))?;
+    let temporary = BundleTemporary(temporary);
     let mut zip = zip::ZipWriter::new(output);
     let options = SimpleFileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
@@ -500,16 +570,38 @@ fn write_bundle(
     zip.write_all(&manifest_bytes)
         .map_err(|error| error.to_string())?;
 
+    let mut written_bytes = 0_u64;
     for candidate in &candidates {
         zip.start_file(&candidate.archive_path, options)
             .map_err(|error| format!("无法写入 {}：{error}", candidate.archive_path))?;
-        let mut input = File::open(&candidate.source)
-            .map_err(|error| format!("无法读取 {}：{error}", candidate.source.display()))?;
-        std::io::copy(&mut input, &mut zip)
+        let owned;
+        let bytes = if let Some(snapshot) = snapshots.get(&candidate.source) {
+            snapshot.as_slice()
+        } else {
+            let input = open_without_links(&candidate.source)?;
+            if !input.metadata().map_err(|e| e.to_string())?.is_file() {
+                return Err("导出附件不是普通文件".into());
+            }
+            let mut buffer = Vec::new();
+            input
+                .take(MAX_FILE_BYTES + 1)
+                .read_to_end(&mut buffer)
+                .map_err(|e| e.to_string())?;
+            owned = buffer;
+            owned.as_slice()
+        };
+        written_bytes += bytes.len() as u64;
+        if bytes.len() as u64 > MAX_FILE_BYTES || written_bytes > MAX_BUNDLE_BYTES {
+            return Err("导出内容在读取时超过容量上限".into());
+        }
+        zip.write_all(bytes)
             .map_err(|error| format!("无法复制 {}：{error}", candidate.source.display()))?;
         debug_assert!(candidate.size <= MAX_FILE_BYTES);
     }
-    zip.finish().map_err(|error| error.to_string())?;
+    let output = zip.finish().map_err(|error| error.to_string())?;
+    output.sync_all().map_err(|error| error.to_string())?;
+    drop(output);
+    fs::rename(&temporary.0, destination).map_err(|error| format!("无法提交导出包：{error}"))?;
     Ok((candidates.len(), skipped))
 }
 
@@ -649,7 +741,7 @@ mod tests {
 
     #[test]
     fn bundle_contains_skill_directory_but_excludes_env_files() {
-        let root = std::env::temp_dir().join(format!(
+        let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
             "agent-skill-hub-export-test-{}",
             std::process::id()
         ));
@@ -664,7 +756,7 @@ mod tests {
             kind: "Skill".to_string(),
             name: "Sample Skill".to_string(),
             variants: vec![Variant {
-                sha256: "abc123".to_string(),
+                sha256: format!("{:x}", Sha256::digest(b"# Sample")),
                 locations: vec![Location {
                     path: skill_dir.join("SKILL.md").display().to_string(),
                     ..Location::default()
@@ -718,6 +810,20 @@ mod tests {
             .iter()
             .any(|name| name.ends_with("/references/guide.md")));
         assert!(!names.iter().any(|name| name.ends_with("/.env")));
+        let definition_name = names
+            .iter()
+            .find(|name| name.ends_with("/SKILL.md"))
+            .unwrap();
+        let mut definition_bytes = Vec::new();
+        archive
+            .by_name(definition_name)
+            .unwrap()
+            .read_to_end(&mut definition_bytes)
+            .unwrap();
+        assert_eq!(
+            format!("{:x}", Sha256::digest(&definition_bytes)),
+            format!("{:x}", Sha256::digest(b"# Sample"))
+        );
         let mut manifest = String::new();
         archive
             .by_name("manifest.json")
@@ -729,6 +835,134 @@ mod tests {
         assert_eq!(manifest["relationships"][0]["source"], "user_selected");
 
         fs::remove_dir_all(&root).expect("remove test fixture");
+    }
+
+    #[test]
+    fn drift_blocks_bundle_and_preserves_existing_destination() {
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join(format!("lingstack-export-drift-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("agent.md");
+        fs::write(&source, "old").unwrap();
+        let group = AssetGroup {
+            kind: "Agent".into(),
+            logical_id: "a".into(),
+            variants: vec![Variant {
+                sha256: format!("{:x}", Sha256::digest(b"old")),
+                locations: vec![Location {
+                    path: source.display().to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        fs::write(&source, "changed").unwrap();
+        let destination = root.join("existing.zip");
+        fs::write(&destination, "keep-existing").unwrap();
+        assert!(write_bundle(
+            &destination,
+            &Registry::default(),
+            "selection",
+            &[group],
+            &[],
+            &[]
+        )
+        .unwrap_err()
+        .contains("SHA-256"));
+        assert_eq!(fs::read_to_string(&destination).unwrap(), "keep-existing");
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn failed_bundle_commit_removes_only_its_temporary_file() {
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join(format!("lingstack-export-cleanup-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("agent.md");
+        fs::write(&source, "content").unwrap();
+        let group = AssetGroup {
+            kind: "Agent".into(),
+            logical_id: "a".into(),
+            variants: vec![Variant {
+                sha256: format!("{:x}", Sha256::digest(b"content")),
+                locations: vec![Location {
+                    path: source.display().to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let destination = root.join("existing-directory");
+        fs::create_dir_all(&destination).unwrap();
+        fs::write(destination.join("keep"), "keep").unwrap();
+        assert!(write_bundle(
+            &destination,
+            &Registry::default(),
+            "selection",
+            &[group],
+            &[],
+            &[]
+        )
+        .is_err());
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 2);
+        assert_eq!(
+            fs::read_to_string(destination.join("keep")).unwrap(),
+            "keep"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn definition_export_rejects_links_and_non_regular_files() {
+        use std::os::unix::fs::symlink;
+        let root = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join(format!("lingstack-export-links-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("source.md");
+        fs::write(&source, "content").unwrap();
+        let link = root.join("link.md");
+        symlink(&source, &link).unwrap();
+        let parent_link = root.join("parent");
+        symlink(&root, &parent_link).unwrap();
+        let group_for = |path: &Path| AssetGroup {
+            kind: "Agent".into(),
+            variants: vec![Variant {
+                sha256: format!("{:x}", Sha256::digest(b"content")),
+                locations: vec![Location {
+                    path: path.display().to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        for path in [&link, &parent_link.join("source.md"), &root] {
+            assert!(definition_snapshots(&[group_for(path)]).is_err());
+        }
+        // mkfifo creates only a task-owned local filesystem fixture, with no process or listener.
+        #[cfg(target_os = "macos")]
+        type FifoMode = u16;
+        #[cfg(not(target_os = "macos"))]
+        type FifoMode = u32;
+        unsafe extern "C" {
+            fn mkfifo(path: *const std::ffi::c_char, mode: FifoMode) -> i32;
+        }
+        use std::os::unix::ffi::OsStrExt;
+        let fifo = root.join("pipe.md");
+        let fifo_name = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { mkfifo(fifo_name.as_ptr(), 0o600) }, 0);
+        assert!(definition_snapshots(&[group_for(&fifo)]).is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
+  import { hasValidVerification } from "../assetState";
   import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { CheckCircle2, FilePenLine, FlaskConical, FolderOpen, Save, ShieldCheck, Sparkles } from "@lucide/svelte";
   import {
@@ -16,22 +18,33 @@
   export let record: AssetGovernanceRecord | undefined;
   export let onUpdated: (record: AssetGovernanceRecord) => void;
   export let reportError: (reason: unknown) => void;
+  export let preferredHash = "";
+  export let preferenceRevision = 0;
 
-  let candidateSha = record?.selected_sha256 || (asset.variants.length === 1 ? asset.variants[0]?.sha256 ?? "" : "");
+  let candidateSha = (asset.variants.some(v => v.sha256 === record?.selected_sha256) ? record?.selected_sha256 ?? "" : (asset.variants.length === 1 ? asset.variants[0]?.sha256 ?? "" : ""));
   let licenseDecision = record?.license?.decision ?? (asset.license && !asset.license.includes("待") ? asset.license : "");
   let licenseEvidence = record?.license?.evidence ?? "";
-  let verificationEvidence = record?.verification?.evidence ?? "";
+  let verificationEvidence = (hasValidVerification(asset, record) ? record?.verification?.evidence ?? "" : "");
   let report: AssetAuditReport | null = null;
   let busy = "";
   let previousAssetId = asset.logical_id;
+  let previousPreference = "";
+  let auditRequest = 0;
+  let disposed = false;
+  onDestroy(() => { disposed = true; auditRequest += 1; });
 
   $: if (asset.logical_id !== previousAssetId) {
     previousAssetId = asset.logical_id;
-    candidateSha = record?.selected_sha256 || (asset.variants.length === 1 ? asset.variants[0]?.sha256 ?? "" : "");
+    candidateSha = (asset.variants.some(v => v.sha256 === record?.selected_sha256) ? record?.selected_sha256 ?? "" : (asset.variants.length === 1 ? asset.variants[0]?.sha256 ?? "" : ""));
     licenseDecision = record?.license?.decision ?? (asset.license && !asset.license.includes("待") ? asset.license : "");
     licenseEvidence = record?.license?.evidence ?? "";
-    verificationEvidence = record?.verification?.evidence ?? "";
+    verificationEvidence = (hasValidVerification(asset, record) ? record?.verification?.evidence ?? "" : "");
     report = null;
+  }
+
+  $: if (previousPreference !== `${asset.logical_id}:${preferredHash}:${preferenceRevision}`) {
+    previousPreference = `${asset.logical_id}:${preferredHash}:${preferenceRevision}`;
+    if (asset.variants.some(variant => variant.sha256 === preferredHash)) candidateSha = preferredHash;
   }
 
   function compactHash(value: string) {
@@ -56,13 +69,20 @@
   }
 
   async function deepAudit() {
+    const request = ++auditRequest;
+    const logicalId = asset.logical_id;
     busy = "audit";
+    report = null;
     try {
-      const result = await runAssetAudit([asset.logical_id], true);
-      report = result.reports[0] ?? null;
+      const result = await runAssetAudit([logicalId], true);
+      if (disposed || request !== auditRequest || asset.logical_id !== logicalId) return;
+      report = result.reports.find(item => item.logical_id === logicalId) ?? null;
       if (!report) throw new Error(tr("audit.blocked", {}, $locale));
-    } catch (reason) { reportError(reason); }
-    finally { busy = ""; }
+    } catch (reason) {
+      if (!disposed && request === auditRequest) reportError(reason);
+    } finally {
+      if (!disposed && request === auditRequest) busy = "";
+    }
   }
 
   async function verify() {
@@ -100,12 +120,12 @@
   <header>
     <div><span class="eyebrow">ACTION WORKFLOW</span><h2>{tr("governance.title", {}, $locale)}</h2></div>
     {#if record?.pending_refresh}<span class="status-chip warn">{tr("assets.optimizedPending", {}, $locale)}</span>
-    {:else if record?.verification}<span class="status-chip good">{tr("assets.verified", {}, $locale)}</span>
+    {:else if hasValidVerification(asset, record)}<span class="status-chip good">{tr("assets.verified", {}, $locale)}</span>
     {:else if record?.selected_sha256}<span class="status-chip neutral">{tr("assets.versionSelected", {}, $locale)}</span>{/if}
   </header>
   <p class="governance-boundary">{tr("path.manual", {}, $locale)}</p>
 
-  <article class="governance-step">
+  <article class="governance-step" id="asset-governance-candidate">
     <div class="step-number">1</div>
     <div class="step-content">
       <h3>{tr("governance.variant", {}, $locale)} <small>{asset.variants.length}</small></h3>
@@ -134,7 +154,7 @@
   <article class="governance-step">
     <div class="step-number">3</div>
     <div class="step-content">
-      <h3>{tr("governance.verify", {}, $locale)} {#if record?.verification}<CheckCircle2 size={15} />{/if}</h3>
+      <h3>{tr("governance.verify", {}, $locale)} {#if hasValidVerification(asset, record)}<CheckCircle2 size={15} />{/if}</h3>
       <button class="secondary-button small" disabled={busy === "audit"} onclick={deepAudit}><FlaskConical size={14} />{tr(busy === "audit" ? "common.loading" : "audit.deep", {}, $locale)}</button>
       {#if report}
         <div class="inline-audit-result {report.status}"><strong>{report.score} · {tr(report.status === "blocked" ? "audit.blocked" : report.status === "usable" ? "audit.usable" : "audit.optimize", {}, $locale)}</strong><span>{report.checks.filter((check) => check.status === "pass").length}/{report.checks.length}</span></div>

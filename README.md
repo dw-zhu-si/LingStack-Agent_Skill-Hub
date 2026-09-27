@@ -40,6 +40,7 @@ LingStack creates one auditable workflow:
 | Unified inventory | One searchable view across Agent, Skill, tool, project, source, license, lifecycle state, and content hash. |
 | Project capability map | A project-centric map that exposes capability mix, reuse coverage, pending assets, and relationship evidence. |
 | Version governance | Conflict queues, explicit variant selection, pinned versions, promotion gates, and traceable receipts. |
+| 版本辅助决策 | 两个内容版本的逐行差异、目标来源和验证偏好、建议依据与候选预填；证据不足不指定版本，不以长度或时间判断优劣。 |
 | Verification | Lightweight or deep static audits for readability, metadata, structure, references, risk signals, and optimization opportunities. |
 | Optimization workflow | Creates an editable draft and plan, preserves the original, records hashes, and requires explicit application. |
 | Model access | Connects to Ollama and OpenAI-compatible endpoints, automatically fetches all visible models, supports multi-model selection, and stores secrets in macOS Keychain. |
@@ -236,3 +237,15 @@ Notarization, App Store processing, and GitHub publication are reported separate
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE). Copyright © 2026 野路子工作室.
+
+## 更新开发中的工作台增强
+
+2026-09-16 开发分支新增工具、项目及来源筛选，普通搜索覆盖来源路径；桌面端支持显式全文搜索、命中版本定位与定义原文阅读。预览显示行数、字节数及静态 Token 估算，估算不代表真实调用或账单。全文搜索有读取与结果预算，并显示跳过和截断状态。
+
+本轮增加共享 `.agents/skills` 与 Antigravity 全局技能目录的只读发现，修复多行描述读取。扫描和预览均不执行技能正文，也不自动改写技能文件。浏览器预览不能读取本机定义。
+
+HTTP 集成测试需要先为本项目预留两个测试端口，再设置 `LINGSTACK_TEST_LIST_PORT` 和 `LINGSTACK_TEST_INFERENCE_PORT`，使用 `cargo test --manifest-path src-tauri/Cargo.toml -- --include-ignored` 执行完整回归；商店版增加 `--features app-store`。普通测试不会自行选择监听端口。
+
+这些是本地开发变更，现有 v0.11.0 下载与商店制品不包含本轮改动。
+
+2026-09-27 本地开发构建增加“对比选版 → 帮我选择”：先读取两个真实版本，按目标来源及保留当前/优先验证偏好提供可解释建议；缺少证据时不指定版本。建议只预填候选，最终确认才保存。同步修复资产身份碰撞、失效验证状态、导出哈希一致性、项目精确筛选、审计分页与模型编辑响应串写，并修补 devalue 依赖告警。检查范围、验证结果与后续路线见 [0.12.0 更新说明](docs/releases/0.12.0.md)。

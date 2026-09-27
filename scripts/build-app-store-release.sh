@@ -70,6 +70,11 @@ if [[ ! -d "${BUILT_APP}" ]]; then
 fi
 
 ditto --norsrc "${BUILT_APP}" "${APP_PATH}"
+# Cloud-managed destination folders may attach Finder metadata to the new bundle.
+# Remove only this unsigned presentation attribute from the generated app root.
+if xattr "${APP_PATH}" | grep -Fxq 'com.apple.FinderInfo'; then
+  xattr -d com.apple.FinderInfo "${APP_PATH}"
+fi
 codesign --verify --deep --strict --verbose=2 "${APP_PATH}"
 # `:-` keeps plist output machine-readable on current macOS releases.
 codesign -d --entitlements :- "${APP_PATH}" > "${DIST_DIR}/audit/signed-entitlements.plist"
@@ -90,11 +95,29 @@ python3 scripts/audit-clean-release.py "${APP_PATH}" \
   --forbid "${PROJECT_ROOT}" \
   --report "${AUDIT_REPORT}"
 
+# Package from the task's temporary build directory: cloud sync can reattach
+# FinderInfo to the Desktop copy between verification and productbuild.
+PKG_COMPONENT_APP="${BUILD_TARGET_DIR}/pkg-stage/灵栈.app"
+mkdir -p "$(dirname "${PKG_COMPONENT_APP}")"
+ditto --norsrc --noextattr "${APP_PATH}" "${PKG_COMPONENT_APP}"
+codesign --verify --deep --strict --verbose=2 "${PKG_COMPONENT_APP}"
 xcrun productbuild \
   --sign "${INSTALLER_IDENTITY}" \
-  --component "${APP_PATH}" /Applications \
+  --component "${PKG_COMPONENT_APP}" /Applications \
   "${PKG_PATH}"
 pkgutil --check-signature "${PKG_PATH}"
+PKG_AUDIT_DIR="${BUILD_TARGET_DIR}/pkg-audit"
+pkgutil --expand-full "${PKG_PATH}" "${PKG_AUDIT_DIR}"
+PKG_PAYLOAD_APP="$(python3 - "${PKG_AUDIT_DIR}" <<'PY'
+import sys
+from pathlib import Path
+apps = list(Path(sys.argv[1]).rglob('*.app'))
+if len(apps) != 1:
+    raise SystemExit('Expected exactly one app in the installer payload')
+print(apps[0])
+PY
+)"
+codesign --verify --deep --strict --verbose=2 "${PKG_PAYLOAD_APP}"
 shasum -a 256 "${PKG_PATH}" "${APP_PATH}/Contents/MacOS/agent-skill-hub"
 
 if [[ "${LINGZHAN_UPLOAD_APP_STORE:-0}" == "1" ]]; then

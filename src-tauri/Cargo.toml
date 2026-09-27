@@ -1,6 +1,6 @@
 [package]
 name = "agent-skill-hub"
-version = "0.11.0"
+version = "0.12.0"
 description = "灵栈：本地优先、可追溯的 Agent 与 Skill 管理器"
 authors = ["Lingzhan Contributors"]
 edition = "2021"

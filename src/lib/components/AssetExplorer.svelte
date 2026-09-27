@@ -11,7 +11,9 @@
     RotateCcw,
     Sparkles
   } from "@lucide/svelte";
-  import type { AssetGovernanceRecord, AssetGroup } from "../types";
+  import { hasValidVerification } from "../assetState";
+  import { searchAssetDefinitions, supportsDefinitionReads } from "../api";
+  import type { DefinitionSearchResult, AssetGovernanceRecord, AssetGroup } from "../types";
   import { formatLocaleNumber, locale, tr } from "../i18n";
 
   export let groups: AssetGroup[];
@@ -20,12 +22,67 @@
   export let toggleSelection: (id: string) => void;
   export let addSelection: (ids: string[]) => void;
   export let clearSelection: () => void;
-  export let openAsset: (asset: AssetGroup) => void;
+  export let openAsset: (asset: AssetGroup, preferredHash?: string) => void;
   export let governanceById: Map<string, AssetGovernanceRecord>;
   export let manageSelection: () => void;
   export let goToExports: () => void;
 
   const PAGE_SIZES = [50, 100, 200] as const;
+  let toolFilter = "";
+  export let projectFilter = "";
+  let sourceFilter = "";
+  let fullTextQuery = "";
+  let submittedQuery = "";
+  let fullTextResult: DefinitionSearchResult | null = null;
+  let searchLoading = false;
+  let searchError = "";
+  let searchRequest = 0;
+  const desktop = supportsDefinitionReads();
+  function sources(asset: AssetGroup): string[] {
+    return [...new Set(asset.variants.flatMap(v => v.locations.map(l => l.source_class).filter((value): value is string => !!value)))];
+  }
+  function options(assets: AssetGroup[], values: (asset: AssetGroup) => string[]): Array<[string, number]> {
+    const counts = new Map<string, number>();
+    for (const asset of assets) for (const value of new Set(values(asset))) counts.set(value, (counts.get(value) ?? 0) + 1);
+    return [...counts].sort(([a], [b]) => a.localeCompare(b));
+  }
+  $: toolOptions = options(groups, asset => asset.tools ?? []);
+  $: projectOptions = options(groups, asset => asset.projects ?? []);
+  $: sourceOptions = options(groups, sources);
+  $: fullTextMatches = new Map(fullTextResult?.matches.map(match => [match.logical_id, match]) ?? []);
+  async function searchDefinitions() {
+    if (!fullTextQuery.trim() || searchLoading) return;
+    const request = ++searchRequest;
+    submittedQuery = fullTextQuery.trim();
+    searchLoading = true;
+    searchError = "";
+    fullTextResult = null;
+    try {
+      const result = await searchAssetDefinitions(submittedQuery);
+      if (request === searchRequest) { fullTextResult = result; resetPage(); }
+    } catch (cause) {
+      if (request === searchRequest) searchError = String(cause);
+    } finally {
+      if (request === searchRequest) searchLoading = false;
+    }
+  }
+  function clearDefinitionSearch() {
+    searchRequest += 1;
+    fullTextQuery = "";
+    submittedQuery = "";
+    fullTextResult = null;
+    searchError = "";
+    searchLoading = false;
+    resetPage();
+  }
+  let previousGroups = groups;
+  $: if (groups !== previousGroups) {
+    previousGroups = groups;
+    clearDefinitionSearch();
+    if (!groups.some(asset => asset.tools?.includes(toolFilter))) toolFilter = "";
+    if (!groups.some(asset => asset.projects?.includes(projectFilter))) projectFilter = "";
+    if (!groups.some(asset => sources(asset).includes(sourceFilter))) sourceFilter = "";
+  }
   let kindFilter = "all";
   let stateFilter = "all";
   let sortBy = "name";
@@ -36,7 +93,7 @@
   $: searchIndex = new Map(
     groups.map((asset) => [
       asset.logical_id,
-      [asset.name, asset.description, asset.logical_id, ...(asset.tools ?? []), ...(asset.projects ?? [])]
+      [asset.name, asset.description, asset.logical_id, ...(asset.tools ?? []), ...(asset.projects ?? []), ...asset.variants.flatMap(variant => variant.locations.map(location => location.path))]
         .filter(Boolean)
         .join(" ")
         .toLocaleLowerCase()
@@ -49,11 +106,15 @@
     const matchesState =
       stateFilter === "all" ||
       (stateFilter === "ready" && (asset.ready_versions?.length ?? 0) > 0) ||
-      (stateFilter === "verified" && !!governanceById.get(asset.logical_id)?.verification) ||
+      (stateFilter === "verified" && hasValidVerification(asset, governanceById.get(asset.logical_id))) ||
       (stateFilter === "selected" && !!governanceById.get(asset.logical_id)?.selected_sha256) ||
       (stateFilter === "multi" && asset.variants.length > 1) ||
       (stateFilter === "pending" && (asset.ready_versions?.length ?? 0) === 0);
-    return matchesSearch && matchesKind && matchesState;
+    return matchesSearch && matchesKind && matchesState
+      && (!toolFilter || asset.tools?.includes(toolFilter))
+      && (!projectFilter || asset.projects?.includes(projectFilter))
+      && (!sourceFilter || sources(asset).includes(sourceFilter))
+      && (!fullTextResult || fullTextMatches.has(asset.logical_id));
   });
   $: sortedGroups = [...filteredGroups].sort((left, right) => {
     if (sortBy === "versions") {
@@ -80,7 +141,7 @@
   function lifecycleTone(asset: AssetGroup): "good" | "warn" | "neutral" | "danger" {
     const governance = governanceById.get(asset.logical_id);
     if (governance?.pending_refresh) return "warn";
-    if (governance?.verification) return "good";
+    if (hasValidVerification(asset, governance)) return "good";
     if ((asset.ready_versions?.length ?? 0) > 0) return "good";
     if (asset.variants.length > 1) return "warn";
     if ((asset.lifecycle_state ?? "").includes("隔离")) return "danger";
@@ -90,7 +151,7 @@
   function lifecycleLabel(asset: AssetGroup): string {
     const governance = governanceById.get(asset.logical_id);
     if (governance?.pending_refresh) return tr("assets.optimizedPending", {}, $locale);
-    if (governance?.verification) return tr("assets.verified", {}, $locale);
+    if (hasValidVerification(asset, governance)) return tr("assets.verified", {}, $locale);
     if ((asset.ready_versions?.length ?? 0) > 0) return tr("assets.ready", {}, $locale);
     if (governance?.selected_sha256 && asset.variants.length > 1) return tr("assets.selectedPending", {}, $locale);
     if (governance?.license) return tr("assets.licensePending", {}, $locale);
@@ -109,6 +170,10 @@
   }
 
   function resetFilters() {
+    toolFilter = "";
+    projectFilter = "";
+    sourceFilter = "";
+    clearDefinitionSearch();
     kindFilter = "all";
     stateFilter = "all";
     sortBy = "name";
@@ -159,7 +224,19 @@
     <option value="versions">{tr("common.versions", {}, $locale)}</option>
     <option value="state">{tr("projects.attention", {}, $locale)}</option>
   </select>
-  {#if kindFilter !== "all" || stateFilter !== "all" || sortBy !== "name"}
+  <select bind:value={toolFilter} aria-label={tr("explorer.tool", {}, $locale)} onchange={resetPage}>
+    <option value="">{tr("explorer.tool", {}, $locale)} · {tr("common.all", {}, $locale)}</option>
+    {#each toolOptions as [value, count]}<option value={value}>{value} ({count})</option>{/each}
+  </select>
+  <select bind:value={projectFilter} aria-label={tr("explorer.project", {}, $locale)} onchange={resetPage}>
+    <option value="">{tr("explorer.project", {}, $locale)} · {tr("common.all", {}, $locale)}</option>
+    {#each projectOptions as [value, count]}<option value={value}>{value} ({count})</option>{/each}
+  </select>
+  <select bind:value={sourceFilter} aria-label={tr("explorer.source", {}, $locale)} onchange={resetPage}>
+    <option value="">{tr("explorer.source", {}, $locale)} · {tr("common.all", {}, $locale)}</option>
+    {#each sourceOptions as [value, count]}<option value={value}>{value} ({count})</option>{/each}
+  </select>
+  {#if kindFilter !== "all" || stateFilter !== "all" || sortBy !== "name" || toolFilter || projectFilter || sourceFilter || fullTextResult || searchError}
     <button class="text-button" onclick={resetFilters}><RotateCcw size={13} />{tr("common.reset", {}, $locale)}</button>
   {/if}
   <span class="result-count">{tr("common.items", { count: selectedIds.size }, $locale)} {tr("common.selected", {}, $locale)}</span>
@@ -171,6 +248,20 @@
     <button class="primary-button small" onclick={manageSelection}>
       <ShieldCheck size={15} /> {tr("common.manageSelected", {}, $locale)}
     </button>
+  {/if}
+</section>
+
+<section class="definition-search panel" aria-busy={searchLoading}>
+  <form onsubmit={(event) => { event.preventDefault(); searchDefinitions(); }}>
+    <label>{tr("explorer.fullText", {}, $locale)}<input type="search" bind:value={fullTextQuery} disabled={!desktop} /></label>
+    <button class="secondary-button small" type="submit" disabled={!desktop || searchLoading || !fullTextQuery.trim()}>{tr(searchLoading ? "definition.loading" : "explorer.fullText", {}, $locale)}</button>
+    {#if submittedQuery || fullTextQuery || searchError}<button class="text-button" type="button" onclick={clearDefinitionSearch}>{tr("common.clearSearch", {}, $locale)}</button>{/if}
+  </form>
+  <p>{tr(desktop ? "explorer.searchHint" : "definition.desktopRequired", {}, $locale)}</p>
+  {#if searchError}<p role="alert">{searchError}</p>{/if}
+  {#if fullTextResult}
+    <p role="status">{tr("explorer.searchStats", { query: submittedQuery, scanned: fullTextResult.scanned_files, skipped: fullTextResult.skipped_files }, $locale)}</p>
+    {#if fullTextResult.truncated}<p role="status">{tr("explorer.truncated", {}, $locale)}</p>{/if}
   {/if}
 </section>
 
@@ -189,13 +280,14 @@
           />
           <span><Check size={12} /></span>
         </label>
-        <button class="asset-cell" onclick={() => openAsset(asset)}>
+        <button class="asset-cell" onclick={() => openAsset(asset, fullTextMatches.get(asset.logical_id)?.sha256)}>
           <span class="asset-glyph {asset.kind.toLowerCase()}">
             {#if asset.kind.toLowerCase() === "agent"}<Bot size={17} />{:else}<Sparkles size={17} />{/if}
           </span>
           <span>
             <strong>{asset.name}</strong>
             <small>{asset.kind} · {asset.description || asset.logical_id}</small>
+            {#if fullTextMatches.has(asset.logical_id)}<small class="search-snippet">{fullTextMatches.get(asset.logical_id)?.snippet}</small>{/if}
           </span>
         </button>
         <div class="meta-cell">
@@ -205,9 +297,10 @@
         <div class="version-cell">
           <strong>{asset.variants.length}</strong>
           <small>{tr("drawer.versions", {}, $locale)}</small>
+          {#if asset.variants.length > 1}<button class="text-button" onclick={() => openAsset(asset)}>{tr("decision.short", {}, $locale)}</button>{/if}
         </div>
         <span class="status-chip {lifecycleTone(asset)}">{lifecycleLabel(asset)}</span>
-        <button class="row-action" aria-label={`${tr("common.details", {}, $locale)} ${asset.name}`} onclick={() => openAsset(asset)}>
+        <button class="row-action" aria-label={`${tr("common.details", {}, $locale)} ${asset.name}`} onclick={() => openAsset(asset, fullTextMatches.get(asset.logical_id)?.sha256)}>
           <ChevronRight size={17} />
         </button>
       </div>
@@ -219,8 +312,7 @@
   {#if sortedGroups.length > 0}
     <footer class="table-pagination" aria-label={tr("common.page", { current: currentAssetPage, total: totalAssetPages }, $locale)}>
       <span>
-        显示 {formatNumber(pageStart + 1)}–{formatNumber(Math.min(pageStart + assetPageSize, sortedGroups.length))}
-        / {formatNumber(sortedGroups.length)}
+        {tr("explorer.range", {from: formatNumber(pageStart + 1), to: formatNumber(Math.min(pageStart + assetPageSize, sortedGroups.length)), total: formatNumber(sortedGroups.length)}, $locale)}
       </span>
       <label>
         {tr("common.page", { current: currentAssetPage, total: totalAssetPages }, $locale)}
@@ -240,3 +332,15 @@
     </footer>
   {/if}
 </section>
+
+<style>
+  .filterbar { flex-wrap: wrap; }
+  .filterbar select { max-width: 240px; min-width: 0; }
+  .definition-search { padding: 16px; margin-block: 12px; }
+  .definition-search form { display: flex; align-items: end; flex-wrap: wrap; gap: 12px; }
+  .definition-search label { display: grid; gap: 8px; flex: 1 1 200px; font-size: 12px; }
+  .definition-search input { width: 100%; min-width: 0; }
+  .definition-search p { font-size: 12px; margin-block: 8px 0; overflow-wrap: anywhere; }
+  .search-snippet { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 8px; }
+  @media (max-width: 600px) { .filterbar select { flex: 1 1 140px; max-width: 100%; } }
+</style>

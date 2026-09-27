@@ -149,18 +149,36 @@ fn ensure_public_registry(path: &Path) -> Result<(), String> {
 
 #[cfg(feature = "public-release")]
 fn metadata_value(content: &str, keys: &[&str]) -> String {
-    for line in content.lines().take(120) {
+    let lines: Vec<&str> = content.lines().take(120).collect();
+    let frontmatter = lines.first().is_some_and(|line| line.trim() == "---");
+    for (index, line) in lines.iter().enumerate().skip(usize::from(frontmatter)) {
         let trimmed = line.trim();
+        if frontmatter && matches!(trimmed, "---" | "...") {
+            break;
+        }
+        // Nested metadata and body examples must not override top-level fields.
+        if line.starts_with(char::is_whitespace) {
+            continue;
+        }
         for key in keys {
             for separator in [':', '='] {
-                let prefix = format!("{key}{separator}");
-                if let Some(value) = trimmed.strip_prefix(&prefix) {
-                    return value
-                        .trim()
-                        .trim_matches(['\'', '"'])
-                        .chars()
-                        .take(500)
-                        .collect();
+                if let Some(value) = trimmed
+                    .strip_prefix(key)
+                    .and_then(|rest| rest.trim_start().strip_prefix(separator))
+                {
+                    let value = value.trim();
+                    if matches!(value, "|" | "|-" | "|+" | ">" | ">-" | ">+") {
+                        let block = lines[index + 1..]
+                            .iter()
+                            .take_while(|line| {
+                                line.trim().is_empty() || line.starts_with(char::is_whitespace)
+                            })
+                            .map(|line| line.trim())
+                            .collect::<Vec<_>>()
+                            .join(if value.starts_with('>') { " " } else { "\n" });
+                        return block.trim().chars().take(1024).collect();
+                    }
+                    return value.trim_matches(['\'', '"']).chars().take(1024).collect();
                 }
             }
         }
@@ -184,9 +202,19 @@ fn portable_slug(kind: &str, name: &str) -> String {
     while slug.contains("--") {
         slug = slug.replace("--", "-");
     }
+    let shortened = slug.trim_matches('-').chars().count() > 100;
     slug = slug.trim_matches('-').chars().take(100).collect();
     if slug.is_empty() {
         slug = format!("{:x}", Sha256::digest(name.as_bytes()))[..16].to_string();
+    } else if shortened
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c.is_ascii_whitespace() || c == '-')
+    {
+        // Ordinary ASCII names retain legacy case/whitespace/hyphen aliases.
+        // Truncation, punctuation and Unicode require a lossless identity suffix.
+        slug.push('-');
+        slug.push_str(&format!("{:x}", Sha256::digest(name.as_bytes()))[..16]);
     }
     format!("local-{}-{slug}", kind.to_ascii_lowercase())
 }
@@ -756,6 +784,62 @@ mod tests {
     fn summary_keeps_only_the_last_three_lines() {
         let summary = summarize_output("a\nb\nc\nd\n");
         assert_eq!(summary, "b · c · d");
+    }
+
+    #[cfg(feature = "public-release")]
+    #[test]
+    fn metadata_reads_multiline_descriptions_without_body_examples() {
+        let text = "---\nname: sample\ndescription: >-\n  First line\n  第二行\nlicense: MIT\n---\nname: ignored\n";
+        assert_eq!(metadata_value(text, &["description"]), "First line 第二行");
+        assert_eq!(metadata_value(text, &["license"]), "MIT");
+        assert_eq!(
+            metadata_value(
+                "---\nname: sample\n---\ndescription: body",
+                &["description"]
+            ),
+            ""
+        );
+        assert_eq!(
+            metadata_value("---\nmetadata:\n  name: nested\nname: real\n---", &["name"]),
+            "real"
+        );
+        assert_eq!(
+            metadata_value("name = \"TOML Agent\"", &["name"]),
+            "TOML Agent"
+        );
+    }
+
+    #[cfg(feature = "public-release")]
+    #[test]
+    fn unicode_names_do_not_collapse_into_ascii_slugs() {
+        assert_eq!(
+            portable_slug("Agent", "API Tester"),
+            "local-agent-api-tester"
+        );
+        assert_ne!(
+            portable_slug("Agent", &format!("{}A", "a".repeat(100))),
+            portable_slug("Agent", &format!("{}B", "a".repeat(100)))
+        );
+        assert_ne!(
+            portable_slug("Agent", "API.Tester"),
+            portable_slug("Agent", "API Tester")
+        );
+        assert_eq!(
+            portable_slug("Agent", "API  Tester"),
+            portable_slug("Agent", "API-Tester")
+        );
+        assert_ne!(
+            portable_slug("Agent", "API 测试"),
+            portable_slug("Agent", "API 审计")
+        );
+        assert_ne!(
+            portable_slug("Agent", "API 测试"),
+            portable_slug("Agent", "API")
+        );
+        assert_eq!(
+            portable_slug("Agent", "API 测试"),
+            portable_slug("Agent", "API 测试")
+        );
     }
 
     #[cfg(feature = "public-release")]

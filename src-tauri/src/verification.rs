@@ -28,6 +28,7 @@ fn inspect_definition(asset: &AssetGroup, deep: bool) -> (usize, usize, usize) {
         let mut variant_visible = false;
         let mut variant_structured = false;
         let mut variant_hash_matches = false;
+        let mut variant_drifted = false;
         for location in &variant.locations {
             let path = definition_path(&asset.kind, &location.path);
             let Ok(metadata) = fs::metadata(&path) else {
@@ -43,17 +44,21 @@ fn inspect_definition(asset: &AssetGroup, deep: bool) -> (usize, usize, usize) {
             }
             let Ok(bytes) = fs::read(&path) else { continue };
             let content = String::from_utf8_lossy(&bytes);
-            variant_structured = if asset.kind.eq_ignore_ascii_case("skill") {
+            let location_structured = if asset.kind.eq_ignore_ascii_case("skill") {
                 content.contains("name:") && content.contains("description:")
             } else {
                 content.lines().any(|line| !line.trim().is_empty())
             };
             let actual = format!("{:x}", Sha256::digest(&bytes));
-            variant_hash_matches = actual == variant.sha256;
+            let matches = actual == variant.sha256;
+            variant_drifted |= !matches;
+            variant_hash_matches |= matches;
+            // A valid structure must come from the same registered-content copy.
+            variant_structured |= matches && location_structured;
         }
         visible += usize::from(variant_visible);
         structured += usize::from(variant_structured);
-        hash_matches += usize::from(variant_hash_matches);
+        hash_matches += usize::from(variant_hash_matches && !variant_drifted);
     }
     (visible, structured, hash_matches)
 }
@@ -202,7 +207,7 @@ pub(crate) fn audit_asset(asset: &AssetGroup, deep: bool) -> AssetAuditReport {
     // Keep it in the governance queue instead of mislabeling third-party definitions as blocked.
     let status = if visible == 0 {
         "blocked"
-    } else if score >= 80 && variant_count == 1 {
+    } else if score >= 80 && variant_count == 1 && (!deep || hash_matches == variant_count) {
         "usable"
     } else {
         "needs_attention"
@@ -316,6 +321,31 @@ mod tests {
             }],
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn drifted_copy_cannot_be_hidden_by_location_order() {
+        let root =
+            std::env::temp_dir().join(format!("lingzhan-audit-order-{}", std::process::id()));
+        fs::create_dir_all(&root).unwrap();
+        let valid = root.join("valid.md");
+        let drifted = root.join("drifted.md");
+        fs::write(&valid, "name: sample\ndescription: test\n").unwrap();
+        fs::write(&drifted, "changed").unwrap();
+        let mut asset = sample(&valid, "Skill");
+        asset.variants[0].locations.push(Location {
+            path: drifted.display().to_string(),
+            ..Default::default()
+        });
+        let before = inspect_definition(&asset, true);
+        asset.variants[0].locations.reverse();
+        assert_eq!(before, inspect_definition(&asset, true));
+        assert_eq!(before, (1, 1, 0));
+        assert!(audit_asset(&asset, true)
+            .checks
+            .iter()
+            .any(|c| c.name == "内容哈希" && c.status != "pass"));
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
